@@ -1,13 +1,12 @@
-﻿/*using System.Drawing;
+﻿using System.Drawing;
 
-namespace Jay.Terminalis;
+namespace Jay.Terminalis.Console;
 
 /// <summary>
 /// Options related to a <see cref="Terminal"/>'s cursor.
 /// </summary>
-public sealed class TerminalCursor
+internal sealed class TerminalCursor : TerminalInstance
 {
-    private readonly TerminalInstance _terminal;
 
     /// <summary>
     /// Gets or sets the column position of the cursor within the buffer area.
@@ -54,53 +53,9 @@ public sealed class TerminalCursor
         set => Console.CursorVisible = value;
     }
 
-    internal TerminalCursor(TerminalInstance terminal)
+    internal TerminalCursor(ReaderWriterLockSlim slimLock)
+        : base(slimLock)
     {
-        _terminal = terminal;
-    }
 
-    /// <summary>
-    /// Sets the position of the cursor.
-    /// </summary>
-    /// <param name="position"></param>
-    /// <returns></returns>
-    public TerminalInstance SetPosition(Point position)
-    {
-        Console.SetCursorPosition(position.X, position.Y);
-        return _terminal;
     }
-
-    /// <summary>
-    /// Sets the position of the cursor.
-    /// </summary>
-    /// <param name="left"></param>
-    /// <param name="top"></param>
-    /// <returns></returns>
-    public TerminalInstance SetPosition(int left, int top)
-    {
-        Console.SetCursorPosition(left, top);
-        return _terminal;
-    }
-
-    /// <summary>
-    /// Sets the height of the cursor.
-    /// </summary>
-    /// <param name="size"></param>
-    /// <returns></returns>
-    public TerminalInstance SetHeight(int size)
-    {
-        Console.CursorSize = size;
-        return _terminal;
-    }
-
-    /// <summary>
-    /// Sets the cursor's visibility.
-    /// </summary>
-    /// <param name="visible"></param>
-    /// <returns></returns>
-    public TerminalInstance SetVisible(bool visible)
-    {
-        Console.CursorVisible = visible;
-        return _terminal;
-    }
-}*/
+}

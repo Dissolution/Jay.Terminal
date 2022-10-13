@@ -1,52 +1,35 @@
-﻿/*namespace Jay.Terminalis;
+﻿namespace Jay.Terminalis.Console;
 
-/// <summary>
-/// Options related to a <see cref="Terminal"/>'s Error output.
-/// </summary>
-public sealed class TerminalError
+internal class TerminalError : TerminalInstance, ITerminalError
 {
-    private readonly TerminalInstance _terminal;
-
     /// <summary>
     /// Gets or sets the <see cref="TextWriter"/> the Error outputs to.
     /// </summary>
     public TextWriter Writer
     {
-        get => Console.Error;
-        set => Console.SetError(value);
+        get => GetValue(() => System.Console.Error);
+        set => SetValue(System.Console.SetError, value);
     }
 
     /// <summary>
     /// Has the error stream been redirected from standard?
     /// </summary>
-    public bool Redirected => Console.IsErrorRedirected;
-
-    internal TerminalError(TerminalInstance terminal)
-    {
-        _terminal = terminal;
-    }
+    public bool IsRedirected => GetValue(() => System.Console.IsErrorRedirected);
 
     /// <summary>
     /// Acquires the standard error <see cref="Stream"/>.
     /// </summary>
     /// <returns></returns>
-    public Stream Open() => Console.OpenStandardError();
+    public Stream OpenStream() => GetValue(System.Console.OpenStandardError);
 
     /// <summary>
     /// Acquires the standard error <see cref="Stream"/>, which is set to a specified buffer size.
     /// </summary>
     /// <param name="bufferSize"></param>
     /// <returns></returns>
-    public Stream Open(int bufferSize) => Console.OpenStandardError(bufferSize);
+    public Stream OpenStream(int bufferSize) => GetValue(() => System.Console.OpenStandardError(bufferSize));
 
-    /// <summary>
-    /// Sets the error output to the specified <see cref="TextWriter"/>.
-    /// </summary>
-    /// <param name="writer"></param>
-    /// <returns></returns>
-    public TerminalInstance SetWriter(TextWriter writer)
-    {
-        Console.SetError(writer);
-        return _terminal;
-    }
-}*/
+    
+    protected TerminalError(ReaderWriterLockSlim slimLock)
+        : base(slimLock) { }
+}

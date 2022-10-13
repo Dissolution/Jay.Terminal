@@ -27,7 +27,7 @@ public sealed class TerminalCells
     public ref TerminalCell this[int index]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => ref Cells[index];
+        get => ref _cells[index];
     }
 
     public ref TerminalCell this[int x, int y]

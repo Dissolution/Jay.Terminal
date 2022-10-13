@@ -19,11 +19,19 @@ while (!Console.KeyAvailable)
 {
     long startTicks = stopwatch.ElapsedTicks;
     
-    for (var x = 0; x < cells.Width; x++)
-    for (var y = 0; y < cells.Height; y++)
+    
+    // for (var x = 0; x < cells.Width; x++)
+    // for (var y = 0; y < cells.Height; y++)
+    // {
+    //     ref TerminalCell cell = ref cells[x, y];
+    //     cell.Char = chars[random.Next(chars.Length)];
+    //     // hack
+    //     cell.Colors = (TerminalColors)(byte)random.Next(byte.MaxValue + 1);
+    // }
+    for (var c = 0; c < cells.Length; c++)
     {
-        ref TerminalCell cell = ref cells[x, y];
-        cell.Char = chars[random.Next(chars.Length)];
+        ref TerminalCell cell = ref cells[c];
+        cell.Char = chars[random.Next(62)];
         // hack
         cell.Colors = (TerminalColors)(byte)random.Next(byte.MaxValue + 1);
     }
@@ -42,7 +50,7 @@ while (!Console.KeyAvailable)
         deltaTime -= TimeSpan.TicksPerSecond;
         averageFrameTimeMS = (1000.0d / (frameRate == 0d ? 0.001d : frameRate));
         i++;
-        if (i % 10 == 0)
+        if (i % 3 == 0)
         {
             Console.Title = $"{frameRate:#,##0.0} Frames Per Second  |  {averageFrameTimeMS:#,#00} Average Frame Time (ms)";
             i = 0;
