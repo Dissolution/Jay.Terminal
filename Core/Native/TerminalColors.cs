@@ -17,7 +17,8 @@ public struct TerminalColors : IEquatable<TerminalColors>
     public static bool operator !=(TerminalColors x, TerminalColors y) => x.Value != y.Value;
         
     public static readonly TerminalColors None = new TerminalColors();
-
+    public static readonly TerminalColors Default = new TerminalColors(TerminalColor.Gray, TerminalColor.Black);
+    
     [FieldOffset(0)] 
     internal byte Value;
 
@@ -45,6 +46,12 @@ public struct TerminalColors : IEquatable<TerminalColors>
     public TerminalColors(TerminalColor foreColor, TerminalColor backColor)
     {
         Value = (byte) ((int) foreColor | ((int) backColor << 4));
+    }
+    public void Deconstruct(out TerminalColor foreColor, out TerminalColor backColor)
+    {
+        byte value = Value;
+        foreColor = (TerminalColor) (value & 0b00001111);
+        backColor = (TerminalColor) ((value & 0b11110000) >> 4);
     }
 
     /// <inheritdoc />

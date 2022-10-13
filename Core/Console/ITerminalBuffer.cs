@@ -34,4 +34,10 @@ public interface ITerminalBuffer
     /// <param name="yPos"></param>
     /// <returns></returns>
     void Copy(int left, int top, int width, int height, int xPos, int yPos);
+
+    /// <summary>
+    /// Clears the <see cref="Terminal"/> buffer and corresponding <see cref="DisplayWindow"/> of display information.
+    /// </summary>
+    void Clear();
+
 }

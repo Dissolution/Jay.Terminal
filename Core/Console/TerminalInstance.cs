@@ -1,1187 +1,638 @@
-﻿/*using System.Drawing;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Drawing;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Security;
 using System.Text;
+using Jay.Terminalis.Colors;
+using Jay.Terminalis.Native;
 
-namespace Jay.Terminalis;
+namespace Jay.Terminalis.Console;
 
-/// <summary>
-/// An instance of a <see cref="Terminal"/> for fluent method chaining.
-/// </summary>
-public sealed class TerminalInstance
+internal class TerminalInstance : ITerminalInstance,
+                                  ITerminalInput,
+                                  ITerminalOutput,
+                                  ITerminalError,
+                                  ITerminalBuffer,
+                                  ITerminalCursor,
+                                  ITerminalDisplay,
+                                  ITerminalWindow
 {
-    #region Fields
-    /// <summary>
-    /// For thread-safe <see cref="Terminal"/> usage.
-    /// </summary>
-    internal readonly object _lock = new object();
+    private readonly IntPtr _consoleWindowHandle;
+    private readonly ReaderWriterLockSlim _slimLock;
+    private ConsoleCancelEventHandler? _cancelEventHandler;
+    
+    public ITerminalInput Input => this;
 
-    //private IPalette _palette;
-    //private readonly ColorMapper _colorMapper = new ColorMapper();
+    public ITerminalOutput Output => this;
+
+    public ITerminalError Error  => this;
+
+    public ITerminalBuffer Buffer => this;
+
+    public ITerminalCursor Cursor => this;
+
+    public ITerminalDisplay Display => this;
+
+    public ITerminalWindow Window => this;
+
+    public TerminalInstance()
+    {
+        _consoleWindowHandle = NativeMethods.GetConsoleHandle();
+        _slimLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
+        _cancelEventHandler = null;
+        SysCons.CancelKeyPress += ConsoleCancelKeyPress;
+    }
+    private void ConsoleCancelKeyPress(object? sender, ConsoleCancelEventArgs args)
+    {
+        _cancelEventHandler?.Invoke(sender, args);
+    }
+
+    private TValue GetValue<TValue>(Func<TValue> getConsoleValue)
+    {
+        _slimLock.TryEnterReadLock(-1);
+        TValue value;
+        try
+        {
+            value = getConsoleValue();
+        }
+        finally
+        {
+            _slimLock.ExitReadLock();
+        }
+        return value;
+    }
+
+    private void SetValue<TValue>(Action<TValue> setConsoleValue, TValue value)
+    {
+        _slimLock.TryEnterWriteLock(-1);
+        try
+        {
+            setConsoleValue(value);
+        }
+        finally
+        {
+            _slimLock.ExitWriteLock();
+        }
+    }
+
+    private void Interact(Action consoleAction)
+    {
+        _slimLock.TryEnterWriteLock(-1);
+        try
+        {
+            consoleAction();
+        }
+        finally
+        {
+            _slimLock.ExitWriteLock();
+        }
+    }
+    
+    #region Input
+    /// <summary>
+    /// Gets or sets the <see cref="TextReader"/> the input reads from.
+    /// </summary>
+    TextReader ITerminalInput.Reader
+    {
+        get => GetValue(() => SysCons.In);
+        set => SetValue(SysCons.SetIn, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the <see cref="System.Text.Encoding"/> the <see cref="Terminal"/> uses to read input.
+    /// </summary>
+    Encoding ITerminalInput.Encoding
+    {
+        get => GetValue(() => SysCons.InputEncoding);
+        set => SetValue(v => SysCons.InputEncoding = v, value);
+    }
+
+    /// <summary>
+    /// Has the input stream been redirected from standard?
+    /// </summary>
+    bool ITerminalInput.IsRedirected => GetValue(() => SysCons.IsInputRedirected);
+
+    /// <summary>
+    /// Gets or sets whether Ctrl+C should be treated as input or as a break command.
+    /// </summary>
+    bool ITerminalInput.TreatCtrlCAsInput
+    {
+        get => GetValue(() => SysCons.TreatControlCAsInput);
+        set => SetValue(v => SysCons.TreatControlCAsInput = v, value);
+    }
+    
+    /// <summary>
+    /// Acquires the standard input <see cref="Stream"/>.
+    /// </summary>
+    /// <returns></returns>
+    Stream ITerminalInput.OpenStream() => GetValue(() => SysCons.OpenStandardInput());
+
+    /// <summary>
+    /// Acquires the standard input <see cref="Stream"/>, which is set to a specified buffer size.
+    /// </summary>
+    /// <param name="bufferSize"></param>
+    /// <returns></returns>
+    Stream ITerminalInput.OpenStream(int bufferSize) => GetValue(() => SysCons.OpenStandardInput(bufferSize));
+
+    bool ITerminalInput.KeyAvailable => GetValue(() => SysCons.KeyAvailable);
+
+    bool ITerminalInput.CapsLock => GetValue(() => SysCons.CapsLock);
+
+    bool ITerminalInput.NumberLock => GetValue(() => SysCons.NumberLock);
+
+    event ConsoleCancelEventHandler? ITerminalInput.CancelKeyPress
+    {
+        add => _cancelEventHandler = Delegate.Combine(_cancelEventHandler, value) as ConsoleCancelEventHandler;
+        remove => _cancelEventHandler = Delegate.Remove(_cancelEventHandler, value) as ConsoleCancelEventHandler;
+    }
+    char ITerminalInput.ReadChar()
+    {
+        int unicodeChar = GetValue(SysCons.Read);
+        return Convert.ToChar(unicodeChar);
+    }
+    ConsoleKeyInfo ITerminalInput.ReadKey() => GetValue(SysCons.ReadKey);
+    ConsoleKeyInfo ITerminalInput.ReadKey(bool intercept) => GetValue(() => SysCons.ReadKey(intercept));
+    string? ITerminalInput.ReadLine() => GetValue(SysCons.ReadLine);
+  
+    SecureString ITerminalInput.ReadPassword()
+    {
+        return GetValue(() =>
+        {
+            var secureString = new SecureString();
+            while (SysCons.KeyAvailable)
+            {
+                var key = SysCons.ReadKey();
+                if (char.IsWhiteSpace(key.KeyChar)) break;
+                secureString.AppendChar(key.KeyChar);
+            }
+            return secureString;
+        });
+    }
     #endregion
-
-    #region Properties
+    
+    #region Output
     /// <summary>
-    /// Gets or sets the foreground <see cref="System.Drawing.Color"/> of the <see cref="Terminal"/>.
+    /// Gets or sets the <see cref="TextWriter"/> used for output.
     /// </summary>
-    public Color ForegroundColor
+    TextWriter ITerminalOutput.Writer
     {
-        get => _palette[Console.ForegroundColor];
-        set => Console.ForegroundColor = _palette[value];
+        get => GetValue(() => SysCons.Out);
+        set => SetValue(SysCons.SetOut, value);
     }
 
     /// <summary>
-    /// Gets or sets the background <see cref="System.Drawing.Color"/> of the <see cref="Terminal"/>.
+    /// Gets or sets the <see cref="System.Text.Encoding"/> the <see cref="Terminal"/> uses to output.
     /// </summary>
-    public Color BackgroundColor
+    Encoding ITerminalOutput.Encoding
     {
-        get => _palette[Console.BackgroundColor];
-        set => Console.BackgroundColor = _palette[value];
+        get => GetValue(() => SysCons.OutputEncoding);
+        set => SetValue(v => SysCons.OutputEncoding = v, value);
     }
 
     /// <summary>
-    /// Gets or sets the <see cref="IPalette"/> in use for this <see cref="Terminal"/>.
+    /// Has the output stream been redirected from standard?
     /// </summary>
-    public IPalette Palette
+    bool ITerminalOutput.IsRedirected => GetValue(() => SysCons.IsOutputRedirected);
+    
+    /// <summary>
+    /// Acquires the standard output <see cref="Stream"/>.
+    /// </summary>
+    /// <returns></returns>
+    Stream ITerminalOutput.OpenStream() => GetValue(SysCons.OpenStandardOutput);
+
+    /// <summary>
+    /// Acquires the standard output <see cref="Stream"/>, which is set to a specified buffer size.
+    /// </summary>
+    /// <param name="bufferSize"></param>
+    /// <returns></returns>
+    Stream ITerminalOutput.OpenStream(int bufferSize) => GetValue(() => SysCons.OpenStandardOutput(bufferSize));
+
+    TerminalColor ITerminalOutput.DefaultForeColor => TerminalColors.Default.Foreground;
+
+    TerminalColor ITerminalOutput.DefaultBackColor => TerminalColors.Default.Background;
+
+    TerminalColor ITerminalOutput.ForegroundColor
     {
-        get => _palette;
+        get => GetValue(() => (TerminalColor)SysCons.ForegroundColor);
+        set => SetValue(color => SysCons.ForegroundColor = (ConsoleColor)color, value);
+    }
+
+    TerminalColor ITerminalOutput.BackgroundColor
+    {
+        get => GetValue(() => (TerminalColor)SysCons.BackgroundColor);
+        set => SetValue(color => SysCons.BackgroundColor = (ConsoleColor)color, value);
+    }
+
+    IPalette ITerminalOutput.Palette
+    {
+        get => throw new NotImplementedException();
+        set => throw new NotImplementedException();
+    }
+
+    IDisposable ITerminalOutput.ColorLock
+    {
+        get
+        {
+            return new TerminalReset(this)
+                .Watch(t => t.Output.ForegroundColor)
+                .Watch(t => t.Output.BackgroundColor);
+        }
+    }
+
+    void ITerminalOutput.TempColor(Action<ITerminalInstance> tempAction)
+    {
+        var foreColor = this.Output.ForegroundColor;
+        var backColor = this.Output.BackgroundColor;
+        tempAction(this);
+        this.Output.ForegroundColor = foreColor;
+        this.Output.BackgroundColor = backColor;
+    }
+    void ITerminalOutput.ResetColor()
+    {
+        this.Output.ForegroundColor = Output.DefaultForeColor;
+        this.Output.BackgroundColor = Output.DefaultBackColor;
+    }
+    void ITerminalOutput.SetForeColor(TerminalColor foreColor)
+    {
+        this.Output.ForegroundColor = foreColor;
+    }
+    void ITerminalOutput.SetBackColor(TerminalColor backColor)
+    {
+        this.Output.BackgroundColor = backColor;
+    }
+    void ITerminalOutput.SetColors(TerminalColor? foreColor, TerminalColor? backColor)
+    {
+        if (foreColor.HasValue)
+            this.Output.ForegroundColor = foreColor.Value;
+        if (backColor.HasValue)
+            this.Output.BackgroundColor = backColor.Value;
+    }
+    void ITerminalOutput.Write<T>([AllowNull] T value)
+    {
+        using (_slimLock.GetWriteLock())
+        {
+            if (value is ISpanFormattable)
+            {
+                Span<char> buffer = stackalloc char[1024];
+                if (((ISpanFormattable)value).TryFormat(buffer, out int charsWritten, default, default))
+                {
+                    SysCons.Out.Write(buffer[..charsWritten]);
+                }
+                else
+                {
+                    SysCons.Out.Write(((IFormattable)value).ToString(default, default));
+                }
+            }
+            else if (value is IFormattable)
+            {
+                SysCons.Out.Write(((IFormattable)value).ToString(default, default));
+            }
+            else
+            {
+                SysCons.Out.Write(value?.ToString());
+            }
+        }
+    }
+    void ITerminalOutput.Write(ReadOnlySpan<char> text)
+    {
+        using (_slimLock.GetWriteLock())
+        {
+            SysCons.Out.Write(text);
+        }
+    }
+    void ITerminalOutput.Write(ref DefaultInterpolatedStringHandler interpolatedText)
+    {
+        // Eventually the interpolated handler will do some cool stuff with colors
+        string text = interpolatedText.ToStringAndClear();
+        using (_slimLock.GetWriteLock())
+        {
+            SysCons.Out.Write(text);
+        }
+    }
+    void ITerminalOutput.WriteLine()
+    {
+        using (_slimLock.GetWriteLock())
+        {
+            SysCons.Out.WriteLine();
+        }
+    }
+    void ITerminalOutput.WriteLine<T>([AllowNull] T value)
+    {
+        using (_slimLock.GetWriteLock())
+        {
+            SysCons.Out.WriteLine(value?.ToString());
+        }
+    }
+    void ITerminalOutput.WriteLine(ReadOnlySpan<char> text)
+    {
+        using (_slimLock.GetWriteLock())
+        {
+            SysCons.Out.WriteLine(text);
+        }
+    }
+    void ITerminalOutput.WriteLine(ref DefaultInterpolatedStringHandler interpolatedText)
+    {
+        // ToDo special someday!
+        using (_slimLock.GetWriteLock())
+        {
+            SysCons.Out.WriteLine(interpolatedText.ToStringAndClear());
+        }
+    }
+    #endregion
+    
+    #region Error
+    /// <summary>
+    /// Gets or sets the <see cref="TextWriter"/> the Error outputs to.
+    /// </summary>
+    TextWriter ITerminalError.Writer
+    {
+        get => GetValue(() => SysCons.Error);
+        set => SetValue(SysCons.SetError, value);
+    }
+
+    /// <summary>
+    /// Has the error stream been redirected from standard?
+    /// </summary>
+    bool ITerminalError.IsRedirected => GetValue(() => SysCons.IsErrorRedirected);
+
+    /// <summary>
+    /// Acquires the standard error <see cref="Stream"/>.
+    /// </summary>
+    /// <returns></returns>
+    Stream ITerminalError.OpenStream() => GetValue(SysCons.OpenStandardError);
+
+    /// <summary>
+    /// Acquires the standard error <see cref="Stream"/>, which is set to a specified buffer size.
+    /// </summary>
+    /// <param name="bufferSize"></param>
+    /// <returns></returns>
+    Stream ITerminalError.OpenStream(int bufferSize) => GetValue(() => SysCons.OpenStandardError(bufferSize));
+    #endregion
+    
+    #region Buffer
+    /// <summary>
+    /// Gets or sets the width of the buffer area.
+    /// </summary>
+    int ITerminalBuffer.Width
+    {
+        get => GetValue(() => SysCons.BufferWidth);
+        set => SetValue(v => SysCons.BufferWidth = v, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the height of the buffer area.
+    /// </summary>
+    int ITerminalBuffer.Height
+    {
+        get => GetValue(() => SysCons.BufferHeight);
+        set => SetValue(v => SysCons.BufferHeight = v, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the <see cref="Size"/> of the buffer area.
+    /// </summary>
+    Size ITerminalBuffer.Size
+    {
+        get => GetValue(() => new Size(SysCons.BufferWidth, SysCons.BufferHeight));
+        set => SetValue(v => SysCons.SetBufferSize(v.Width, v.Height), value);
+    }
+
+    /// <summary>
+    /// Copies a specified source <see cref="Rectangle"/> of the screen buffer to a specified destination <see cref="Point"/>.
+    /// </summary>
+    /// <param name="area"></param>
+    /// <param name="position"></param>
+    /// <returns></returns>
+    void ITerminalBuffer.Copy(Rectangle area, Point position)
+    {
+        Interact(() =>
+        {
+            SysCons.MoveBufferArea(area.Left, area.Top, area.Width, area.Height, position.X, position.Y);
+        });
+    }
+
+    /// <summary>
+    /// Copies a specified source area of the screen buffer to a specified destination area.
+    /// </summary>
+    /// <param name="left"></param>
+    /// <param name="top"></param>
+    /// <param name="width"></param>
+    /// <param name="height"></param>
+    /// <param name="xPos"></param>
+    /// <param name="yPos"></param>
+    /// <returns></returns>
+    void ITerminalBuffer.Copy(int left, int top, int width, int height, int xPos, int yPos)
+    {
+        Interact(() =>
+        {
+            SysCons.MoveBufferArea(left, top, width, height, xPos, yPos);
+        });
+    }
+
+    void ITerminalBuffer.Clear() => Interact(SysCons.Clear);
+    #endregion
+    
+    #region Cursor
+    /// <summary>
+    /// Gets or sets the column position of the cursor within the buffer area.
+    /// </summary>
+    int ITerminalCursor.Left
+    {
+        get => GetValue(() => SysCons.CursorLeft);
+        set => SetValue(left => SysCons.CursorLeft = left, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the row position of the cursor within the buffer area.
+    /// </summary>
+    int ITerminalCursor.Top
+    {
+        get => GetValue(() => SysCons.CursorTop);
+        set => SetValue(top => SysCons.CursorTop = top, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the cursor position within the buffer area.
+    /// </summary>
+    Point ITerminalCursor.Position
+    {
+        get => GetValue(() => new Point(SysCons.CursorLeft, SysCons.CursorTop));
+        set => SetValue(point => SysCons.SetCursorPosition(point.X, point.Y), value);
+    }
+
+    /// <summary>
+    /// Gets or sets the height of the cursor within a cell.
+    /// </summary>
+    int ITerminalCursor.Height
+    {
+        get => GetValue(() => SysCons.CursorSize);
+        set => SetValue(height => SysCons.CursorSize = height, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether the cursor is visible.
+    /// </summary>
+    bool ITerminalCursor.Visible
+    {
+        get => GetValue(() => SysCons.CursorVisible);
+        set => SetValue(visible => SysCons.CursorVisible = visible, value);
+    }
+
+    public IDisposable CursorLock => new TerminalReset(this)
+        .Watch(t => t.Cursor.Left)
+        .Watch(t => t.Cursor.Top)
+        .Watch(t => t.Cursor.Visible);
+
+    public void TempPosition(Action<ITerminalInstance> tempAction)
+    {
+        var oldPos = this.Cursor.Position;
+        tempAction(this);
+        this.Cursor.Position = oldPos;
+    }
+    #endregion
+    
+    #region Display
+    /// <summary>
+    /// Gets or sets the leftmost position of the <see cref="Terminal"/> display window area relative to the screen buffer.
+    /// </summary>
+    int ITerminalDisplay.Left
+    {
+        get => GetValue(() => SysCons.WindowLeft);
+        set => SetValue(left => SysCons.WindowLeft = left, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the top position of the <see cref="Terminal"/> display window area relative to the screen buffer.
+    /// </summary>
+    int ITerminalDisplay.Top
+    {
+        get => GetValue(() => SysCons.WindowTop);
+        set => SetValue(top => SysCons.WindowTop = top, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the position of the <see cref="Terminal"/> display window area relative to the screen buffer.
+    /// </summary>
+    Point ITerminalDisplay.Position
+    {
+        get => GetValue(() => new Point(SysCons.WindowLeft, SysCons.WindowTop));
+        set => SetValue(point => SysCons.SetWindowPosition(point.X, point.Y), value);
+    }
+
+    /// <summary>
+    /// Gets or sets the width of the <see cref="Terminal"/> display window.
+    /// </summary>
+    int ITerminalDisplay.Width
+    {
+        get => GetValue(() => SysCons.WindowWidth);
+        set => SetValue(width => SysCons.WindowWidth = width, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the height of the <see cref="Terminal"/> display window.
+    /// </summary>
+    int ITerminalDisplay.Height
+    {
+        get => GetValue(() => SysCons.WindowHeight);
+        set => SetValue(height => SysCons.WindowHeight = height, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the width and height of the <see cref="Terminal"/> display window.
+    /// </summary>
+    Size ITerminalDisplay.Size
+    {
+        get => GetValue(() => new Size(SysCons.WindowWidth, SysCons.WindowHeight));
+        set => SetValue(size => SysCons.SetWindowSize(size.Width, size.Height), value);
+    }
+
+    /// <summary>
+    /// Gets the largest possible number of <see cref="Terminal"/> display window rows, based on the current font, screen resolution, and window size.
+    /// </summary>
+    int ITerminalDisplay.LargestHeight => GetValue(() => SysCons.LargestWindowHeight);
+
+    /// <summary>
+    /// Gets the largest possible number of <see cref="Terminal"/> display window columns, based on the current font, screen resolution, and window size.
+    /// </summary>
+    int ITerminalDisplay.LargestWidth => GetValue(() => SysCons.LargestWindowWidth);
+
+    void ITerminalDisplay.Clear() => Interact(SysCons.Clear);
+#endregion
+    
+    #region Window
+    /// <summary>
+    /// Gets or sets the title to display in the <see cref="Terminal"/> window.
+    /// </summary>
+    string ITerminalWindow.Title
+    {
+        get => GetValue(() => SysCons.Title);
+        set => SetValue(title => SysCons.Title = title, value);
+    }
+
+    Point ITerminalWindow.Location
+    {
+        get => GetValue(() => new Point(SysCons.WindowLeft, SysCons.WindowTop));
         set
         {
-            _palette = value;
-            _colorMapper.SetBufferColors(_palette);
-        }
-    }
-
-    /// <summary>
-    /// Options related to the <see cref="Terminal"/>'s buffer area.
-    /// </summary>
-    public TerminalBuffer Buffer { get; }
-
-    /// <summary>
-    /// Options related to the <see cref="Terminal"/>'s cursor.
-    /// </summary>
-    public TerminalCursor Cursor { get; }
-
-    /// <summary>
-    /// Options related to the <see cref="Terminal"/>'s input.
-    /// </summary>
-    public TerminalInput Input { get; }
-    /// <summary>
-    /// Options related to the <see cref="Terminal"/>'s output.
-    /// </summary>
-    public TerminalOutput Output { get; }
-    /// <summary>
-    /// Options related to the <see cref="Terminal"/>'s error.
-    /// </summary>
-    public TerminalError Error { get; }
-
-    /// <summary>
-    /// Options related to the <see cref="Terminal"/>'s inner window.
-    /// </summary>
-    public TerminalDisplayWindow DisplayWindow { get; }
-
-    /// <summary>
-    /// Options related to the actual <see cref="Terminal"/> window.
-    /// </summary>
-    public TerminalWindow Window { get; }
-
-    /// <summary>
-    /// Gets a value indicating whether a key press is available in the input stream.
-    /// </summary>
-    public bool KeyAvailable => Console.KeyAvailable;
-
-    /// <summary>
-    /// Gets a value indicating whether CAPS LOCK is toggled on or off.
-    /// </summary>
-    public bool CapsLock => Console.CapsLock;
-
-    /// <summary>
-    /// Gets a value indicating whether NUMBER LOCK is toggled on or off.
-    /// </summary>
-    public bool NumberLock => Console.NumberLock;
-    #endregion
-
-    #region Events
-    /// <summary>
-    /// Occurs when the <see cref="ConsoleModifiers.Control"/> modifier key (ctrl) and
-    /// either the <see cref="ConsoleKey.C"/> console key (C) or
-    /// the Break key are pressed simultaneously (Ctrl+C or Ctrl+Break).
-    /// </summary>
-    public event ConsoleCancelEventHandler CancelKeyPress;
-    #endregion
-
-    #region Constructors
-    internal TerminalInstance()
-    {
-        _palette = Palettes.Default;
-        SetColors(_palette.DefaultForeColor, _palette.DefaultBackColor);
-
-        Buffer = new TerminalBuffer(this);
-        Cursor = new TerminalCursor(this);
-        Input = new TerminalInput(this);
-        Output = new TerminalOutput(this);
-        Error = new TerminalError(this);
-        DisplayWindow = new TerminalDisplayWindow(this);
-        Window = new TerminalWindow(this);
-
-        Console.CancelKeyPress += OnCancelKeyPress;
-
-        Output.Encoding = Encoding.UTF8;
-    }
-    #endregion
-
-    #region Private Methods
-    private void OnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
-    {
-        CancelKeyPress?.Invoke(sender, e);
-    }
-
-    private Color? Resolve(object arg)
-    {
-        switch (arg)
-        {
-            case null:
-                return null;
-            case Color color:
-                return color;
-            case ConsoleColor consoleColor:
-                return _palette[consoleColor];
-        }
-        return null;
-    }
-
-    private void Write(FormattableString text, out int length)
-    {
-        if (text is null)
-        {
-            length = 0;
-            return;
-        }
-
-        lock (_lock)
-        {
-            var format = text.Format;
-            var formatLength = format.Length;
-            var args = text.GetArguments();
-            var argCount = text.ArgumentCount;
-
-            var startFore = Console.ForegroundColor;
-            var startBack = Console.BackgroundColor;
-
-            var segment = new StringBuilder(formatLength);
-            length = 0;
-            //Parse
-            for (var i = 0; i < formatLength; i++)
+            SetValue(location =>
             {
-                char c = format[i];
-                //Check for start of placeholder
-                if (c == '{')
-                {
-                    //New segment
-                    segment.Clear();
-                    //Find the closing bracket
-                    for (var j = i + 1; j < formatLength; j++)
-                    {
-                        char d = format[j];
-                        if (d == '}')
-                        {
-                            //Should be a number specifying an index
-                            if (!Converter.TryConvertTo<int>(segment.ToString(), out int argIndex) ||
-                                argIndex < 0 || argIndex >= argCount)
-                                throw new FormatException("Format string is invalid (arguments)");
-
-                            var arg = args[argIndex];
-                            if (arg is Color color)
-                            {
-                                SetForeColor(color, startFore);
-                            }
-                            else if (arg is ConsoleColor consoleColor)
-                            {
-                                SetForeColor(consoleColor);
-                            }
-                            else if (arg is ITuple tuple)
-                            {
-                                if (tuple.Length >= 1)
-                                {
-                                    var fore = Resolve(tuple[0]);
-                                    SetForeColor(fore, startFore);
-                                }
-
-                                if (tuple.Length >= 2)
-                                {
-                                    var back = Resolve(tuple[1]);
-                                    SetBackColor(back, startBack);
-                                }
-                            }
-                            else
-                            {
-                                //Just write it, it's a format object
-                                var argString = arg?.ToString() ?? string.Empty;
-                                Console.Write(argString);
-                                length += argString.Length;
-                            }
-
-                            //Move ahead
-                            i = j;
-                            break;
-                        }
-                        else
-                        {
-                            //Add to segment
-                            segment.Append(d);
-                        }
-                    }
-                }
-                else
-                {
-                    //Write this char
-                    Console.Write(c);
-                    length++;
-                }
-            }
-        }//End lock
-    }
-
-    private void SetForeColor(Color? color, ConsoleColor defaultColor)
-    {
-        if (color is null)
-            return;
-        if (color.Value == Color.Empty)
-        {
-            Console.ForegroundColor = defaultColor;
-        }
-        else if (color.Value != Color.Transparent)
-        {
-            Console.ForegroundColor = _palette[color.Value];
+                var newBounds = new Rectangle(location.X, location.Y, SysCons.WindowWidth, SysCons.WindowHeight);
+                NativeMethods.MoveAndResizeWindow(_consoleWindowHandle, newBounds);
+            }, value);
         }
     }
-    private void SetBackColor(Color? color, ConsoleColor defaultColor)
+
+    Size ITerminalWindow.Size
     {
-        if (color is null)
-            return;
-        if (color.Value == Color.Empty)
+        get => GetValue(() => new Size(SysCons.WindowWidth, SysCons.WindowHeight));
+        set
         {
-            Console.BackgroundColor = defaultColor;
-        }
-        else if (color.Value != Color.Transparent)
-        {
-            Console.BackgroundColor = _palette[color.Value];
-        }
-    }
-    #endregion
-
-    #region Public Methods
-    #region Beep
-    /// <summary>
-    /// Plays a beep through the console speaker.
-    /// </summary>
-    /// <returns></returns>
-    public TerminalInstance Beep()
-    {
-        Console.Beep();
-        return this;
-    }
-
-    /// <summary>
-    /// Plays a beep of specified frequency and duration through the console speaker.
-    /// </summary>
-    /// <param name="frequency"></param>
-    /// <param name="duration"></param>
-    /// <returns></returns>
-    public TerminalInstance Beep(int frequency, int duration)
-    {
-        Console.Beep(frequency, duration);
-        return this;
-    }
-
-    /// <summary>
-    /// Plays a beep of specified frequency and duration through the console speaker.
-    /// </summary>
-    /// <param name="frequency"></param>
-    /// <param name="duration"></param>
-    /// <returns></returns>
-    public TerminalInstance Beep(int frequency, TimeSpan duration)
-    {
-        Console.Beep(frequency, (int)duration.TotalMilliseconds);
-        return this;
-    }
-    #endregion
-
-    #region Clear
-    /// <summary>
-    /// Clears the <see cref="Terminal"/> buffer and corresponding <see cref="DisplayWindow"/> of display information.
-    /// </summary>
-    /// <returns></returns>
-    public TerminalInstance Clear()
-    {
-        Console.Clear();
-        return this;
-    }
-
-    /// <summary>
-    /// Clears the current line the <see cref="Terminal"/> <see cref="Cursor"/> is on.
-    /// </summary>
-    /// <returns></returns>
-    public TerminalInstance ClearLine()
-    {
-        lock (_lock)
-        {
-            var y = Console.CursorTop;
-            var x = Console.CursorLeft;
-            Console.SetCursorPosition(0, y);
-            Console.Write(new string(' ', Console.BufferWidth));
-            Console.SetCursorPosition(x, y);
-            return this;
-        }
-    }
-    #endregion
-
-    #region Read
-    /// <summary>
-    /// Reads the next <see cref="char"/>acter from the standard <see cref="Input"/> stream.
-    /// </summary>
-    /// <returns></returns>
-    public char Read()
-    {
-        return (char)Console.Read();
-    }
-
-    /// <summary>
-    /// Reads the next <see cref="char"/>acter from the standard <see cref="Input"/> stream.
-    /// </summary>
-    /// <param name="c"></param>
-    /// <returns></returns>
-    public TerminalInstance Read(out char c)
-    {
-        c = (char)Console.Read();
-        return this;
-    }
-
-    /// <summary>
-    /// Reads the next <see cref="char"/>acter or function key pressed by the user.
-    /// The pressed key is displayed in the <see cref="Terminal"/> window.
-    /// </summary>
-    /// <returns></returns>
-    public ConsoleKeyInfo ReadKey() => Console.ReadKey();
-
-    /// <summary>
-    /// Reads the next <see cref="char"/>acter or function key pressed by the user.
-    /// The pressed key is displayed in the <see cref="Terminal"/> window.
-    /// </summary>
-    /// <param name="consoleKeyInfo"></param>
-    /// <returns></returns>
-    public TerminalInstance ReadKey(out ConsoleKeyInfo consoleKeyInfo)
-    {
-        consoleKeyInfo = Console.ReadKey();
-        return this;
-    }
-
-    /// <summary>
-    /// Reads the next <see cref="char"/>acter or function key pressed by the user.
-    /// The pressed key is optionally displayed in the <see cref="Terminal"/> window.
-    /// </summary>
-    /// <param name="intercept"></param>
-    /// <returns></returns>
-    public ConsoleKeyInfo ReadKey(bool intercept) => Console.ReadKey(intercept);
-
-    /// <summary>
-    /// Reads the next <see cref="char"/>acter or function key pressed by the user.
-    /// The pressed key is optionally displayed in the <see cref="Terminal"/> window.
-    /// </summary>
-    /// <param name="intercept"></param>
-    /// <param name="consoleKeyInfo"></param>
-    /// <returns></returns>
-    public TerminalInstance ReadKey(bool intercept, out ConsoleKeyInfo consoleKeyInfo)
-    {
-        consoleKeyInfo = Console.ReadKey(intercept);
-        return this;
-    }
-
-    /// <summary>
-    /// Reads the next line of characters from the standard <see cref="Input"/> stream.
-    /// </summary>
-    /// <returns></returns>
-    public string ReadLine() => Console.ReadLine();
-
-    /// <summary>
-    /// Reads the next line of characters from the standard <see cref="Input"/> stream.
-    /// </summary>
-    /// <param name="line"></param>
-    /// <returns></returns>
-    public TerminalInstance ReadLine(out string line)
-    {
-        line = Console.ReadLine();
-        return this;
-    }
-
-    /// <summary>
-    /// Reads the next line of characters from the standard <see cref="Input"/> stream.
-    /// The pressed keys are optionally displayed in the <see cref="Terminal"/> window.
-    /// </summary>
-    /// <param name="intercept"></param>
-    /// <param name="line"></param>
-    /// <returns></returns>
-    public TerminalInstance ReadLine(bool intercept, out string line)
-    {
-        if (!intercept)
-            return ReadLine(out line);
-        lock (_lock)
-        {
-            var buffer = new StringBuilder();
-            while (true)
+            SetValue(size =>
             {
-                var cki = Console.ReadKey(true);
-                if (cki.Key == ConsoleKey.Enter)
-                    break;
-                buffer.Append(cki.KeyChar);
-            }
-
-            line = buffer.ToString();
+                var newBounds = new Rectangle(SysCons.WindowLeft, SysCons.WindowTop, size.Width, size.Height);
+                NativeMethods.MoveAndResizeWindow(_consoleWindowHandle, newBounds);
+            }, value);
         }
-        return this;
     }
-
+    
     /// <summary>
-    /// Reads the next line of characters from the standard <see cref="Input"/> stream into a <see cref="SecureString"/>, displaying an asterisk (*) instead of the pressed characters.
+    /// Gets or sets the bounds of the <see cref="Terminal"/> window.
     /// </summary>
-    /// <param name="password"></param>
-    /// <returns></returns>
-    public TerminalInstance ReadPassword(out SecureString password)
-    {
-        password = new SecureString();
-        lock(_lock)
-            while (true)
-            {
-                var cki = Console.ReadKey(true);
-                if (cki.Key == ConsoleKey.Enter)
-                    break;
-
-                if (cki.Key == ConsoleKey.Backspace)
-                {
-                    password.RemoveAt(password.Length - 1);
-                    Console.CursorLeft -= 1;
-                    Console.Write(' ');
-                    Console.CursorLeft -= 1;
-                }
-                else
-                {
-                    password.AppendChar(cki.KeyChar);
-                    Console.Write('*');
-                }
-            }
-        //Done
-        return this;
-    }
-    #endregion
-
-    #region Color
-    /// <summary>
-    /// Resets the <see cref="ForegroundColor"/> and <see cref="BackgroundColor"/> to their default <see cref="System.Drawing.Color"/> values.
-    /// </summary>
-    /// <returns></returns>
-    public TerminalInstance ResetColor()
-    {
-        lock (_lock)
-        {
-            Console.ForegroundColor = _palette[_palette.DefaultForeColor];
-            Console.BackgroundColor = _palette[_palette.DefaultBackColor];
-        }
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the foreground <see cref="System.Drawing.Color"/> for the <see cref="Terminal"/>.
-    /// </summary>
-    /// <param name="foreColor"></param>
-    /// <returns></returns>
-    public TerminalInstance SetForeColor(Color foreColor)
-    {
-        if (foreColor == Color.Empty)
-            Console.ForegroundColor = _palette[_palette.DefaultForeColor];
-        else if (foreColor == Color.Transparent)
-            return this;
-        else
-            Console.ForegroundColor = _palette[foreColor];
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the background <see cref="System.Drawing.Color"/> for the <see cref="Terminal"/>.
-    /// </summary>
-    /// <param name="backColor"></param>
-    /// <returns></returns>
-    public TerminalInstance SetBackColor(Color backColor)
-    {
-        if (backColor == Color.Empty)
-            Console.BackgroundColor = _palette[_palette.DefaultBackColor];
-        else if (backColor == Color.Transparent)
-            return this;
-        else
-            Console.BackgroundColor = _palette[backColor];
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the foreground <see cref="ConsoleColor"/> for the <see cref="Terminal"/>.
-    /// </summary>
-    /// <param name="foreColor"></param>
-    /// <returns></returns>
-    public TerminalInstance SetForeColor(ConsoleColor foreColor)
-    {
-        Console.ForegroundColor = _palette[_palette[foreColor]];
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the background <see cref="ConsoleColor"/> for the <see cref="Terminal"/>.
-    /// </summary>
-    /// <param name="backColor"></param>
-    /// <returns></returns>
-    public TerminalInstance SetBackColor(ConsoleColor backColor)
-    {
-        Console.BackgroundColor = _palette[_palette[backColor]];
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the foreground and background <see cref="System.Drawing.Color"/>s for the <see cref="Terminal"/>.
-    /// </summary>
-    /// <param name="foreColor"></param>
-    /// <param name="backColor"></param>
-    /// <returns></returns>
-    public TerminalInstance SetColors(Color? foreColor = null, Color? backColor = null)
-    {
-        lock (_lock)
-        {
-            if (foreColor != null)
-                SetForeColor(foreColor.Value);
-            if (backColor != null)
-                SetBackColor(backColor.Value);
-        }
-        return this;
-    }
-
-    /// <summary>
-    /// Sets the foreground and background colors for the <see cref="Terminal"/>.
-    /// </summary>
-    /// <param name="foreColor"></param>
-    /// <param name="backColor"></param>
-    /// <returns></returns>
-    public TerminalInstance SetColors(ConsoleColor? foreColor = null, ConsoleColor? backColor = null)
-    {
-        lock (_lock)
-        {
-            if (foreColor != null)
-                SetForeColor(foreColor.Value);
-            if (backColor != null)
-                SetBackColor(backColor.Value);
-        }
-        return this;
-    }
-    #endregion
-
-    #region Write
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="bool"/> value to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(bool value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the specified <see cref="Encoding.Unicode"/> <see cref="char"/> to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(char value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the specified array of Unicode characters to the standard output stream.
-    /// </summary>
-    /// <param name="buffer"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(char[] buffer)
-    {
-        Console.Write(buffer);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the a segment of an array of Unicode characters to the standard output stream.
-    /// </summary>
-    /// <param name="buffer"></param>
-    /// <param name="startIndex"></param>
-    /// <param name="length"></param>
-    /// <param name="endIndex"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(char[] buffer, int? startIndex = null, int? length = null, int? endIndex = null)
-    {
-        if (buffer is null)
-            throw new ArgumentNullException(nameof(buffer));
-        var check = SliceExtensions.Validate(buffer.Length, ref startIndex, ref length, ref endIndex);
-        if (!check)
-            throw check.Exception;
-        Console.Write(buffer, startIndex.Value, length.Value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="object"/> to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(object value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="int"/> value to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(int value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="uint"/> value to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(uint value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="long"/> value to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(long value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="ulong"/> value to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(ulong value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="float"/> value to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(float value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="double"/> value to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(double value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="decimal"/> value to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(decimal value)
-    {
-        Console.Write(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the specified <see cref="string"/> value to the standard output stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(NonFormattableString value)
-    {
-        Console.Write(value?.Value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the specified <see cref="FormattableString"/> value to the standard output stream, using embedded <see cref="System.Drawing.Color"/> values to change the foreground color during the writing process.
-    /// </summary>
-    /// <param name="text"></param>
-    /// <returns></returns>
-    public TerminalInstance Write(FormattableString text)
-    {
-        Write(text, out _);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/> to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="arg0"></param>
-    /// <returns></returns>
-    [StringFormatMethod("format")]
-    public TerminalInstance Write(string format, object arg0)
-    {
-        Console.Write(format, arg0);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/> to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="arg0"></param>
-    /// <param name="arg1"></param>
-    /// <returns></returns>
-    [StringFormatMethod("format")]
-    public TerminalInstance Write(string format, object arg0, object arg1)
-    {
-        Console.Write(format, arg0, arg1);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/> to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="arg0"></param>
-    /// <param name="arg1"></param>
-    /// <param name="arg2"></param>
-    /// <returns></returns>
-    [StringFormatMethod("format")]
-    public TerminalInstance Write(string format, object arg0, object arg1, object arg2)
-    {
-        Console.Write(format, arg0, arg1, arg2);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/> to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="arg0"></param>
-    /// <param name="arg1"></param>
-    /// <param name="arg2"></param>
-    /// <param name="arg3"></param>
-    /// <returns></returns>
-    [StringFormatMethod("format")]
-    public TerminalInstance Write(string format, object arg0, object arg1, object arg2, object arg3)
-    {
-        Console.Write(format, arg0, arg1, arg2, arg3);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/> to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="args"></param>
-    /// <returns></returns>
-    [StringFormatMethod("format")]
-    public TerminalInstance Write(NonFormattableString format, params object[] args)
-    {
-        Console.Write((string)format, args);
-        return this;
-    }
-    #endregion
-
-    #region WriteLine
-    /// <summary>
-    /// Writes the current line terminator (<see cref="Environment.NewLine"/>) to the standard output stream.
-    /// </summary>
-    /// <returns></returns>
-    public TerminalInstance WriteLine()
-    {
-        Console.WriteLine();
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="object"/>, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(object value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="bool"/> value, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(bool value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the specified <see cref="Encoding.Unicode"/> <see cref="char"/>, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(char value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the specified array of Unicode characters, followed by the current line terminator, to the standard output stream.
-    /// </summary>
-    /// <param name="buffer"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(char[] buffer)
-    {
-        Console.WriteLine(buffer);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the a segement of an array of Unicode characters, followed by the current line terminator, to the standard output stream.
-    /// </summary>
-    /// <param name="buffer"></param>
-    /// <param name="startIndex"></param>
-    /// <param name="length"></param>
-    /// <param name="endIndex"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(char[] buffer, int? startIndex = null, int? length = null, int? endIndex = null)
-    {
-        if (buffer is null)
-            throw new ArgumentNullException(nameof(buffer));
-        var check = SliceExtensions.Validate(buffer.Length, ref startIndex, ref length, ref endIndex);
-        if (!check)
-            throw check.Exception;
-        Console.WriteLine(buffer, startIndex.Value, length.Value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="int"/> value, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(int value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="uint"/> value, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(uint value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="long"/> value, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(long value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="ulong"/> value, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(ulong value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="float"/> value, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(float value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="double"/> value, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(double value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the text representation of the specified <see cref="decimal"/> value, followed by the current line terminator, to the standard <see cref="Output"/> stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(decimal value)
-    {
-        Console.WriteLine(value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the specified <see cref="string"/> value, followed by the current line terminator, to the standard output stream.
-    /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(NonFormattableString value)
-    {
-        Console.WriteLine(value?.Value);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes the specified <see cref="FormattableString"/> value, followed by the current line terminator, to the standard output stream, using embedded <see cref="System.Drawing.Color"/> values to change the foreground color during the writing process.
-    /// </summary>
-    /// <param name="text"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(FormattableString text)
-    {
-        Write(text, out _);
-        Console.WriteLine();
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/>, followed by the current line terminator, to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="arg0"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(string format, object arg0)
-    {
-        Console.WriteLine(format, arg0);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/>, followed by the current line terminator, to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="arg0"></param>
-    /// <param name="arg1"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(string format, object arg0, object arg1)
-    {
-        Console.WriteLine(format, arg0, arg1);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/>, followed by the current line terminator, to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="arg0"></param>
-    /// <param name="arg1"></param>
-    /// <param name="arg2"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(string format, object arg0, object arg1, object arg2)
-    {
-        Console.WriteLine(format, arg0, arg1, arg2);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/>, followed by the current line terminator, to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="arg0"></param>
-    /// <param name="arg1"></param>
-    /// <param name="arg2"></param>
-    /// <param name="arg3"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(string format, object arg0, object arg1, object arg2, object arg3)
-    {
-        Console.WriteLine(format, arg0, arg1, arg2, arg3);
-        return this;
-    }
-
-    /// <summary>
-    /// Writes a formatted <see cref="string"/>, followed by the current line terminator, to the standard output stream.
-    /// </summary>
-    /// <param name="format"></param>
-    /// <param name="args"></param>
-    /// <returns></returns>
-    public TerminalInstance WriteLine(NonFormattableString format, params object[] args)
-    {
-        Console.WriteLine((string)format, args);
-        return this;
-    }
-    #endregion
-
-    #region Temporary Actions
-    /// <summary>
-    /// Stores the current <see cref="Terminal"/> <see cref="Color"/>s and <see cref="Cursor"/> positions, performs an <see cref="Action"/> on this <see cref="Terminal"/>, then restores the <see cref="Color"/>s and <see cref="Cursor"/> position.
-    /// </summary>
-    /// <param name="tempAction"></param>
-    /// <returns></returns>
-    public TerminalInstance Temp(Action<TerminalInstance> tempAction)
-    {
-        if (tempAction is null)
-            return this;
-        lock (_lock)
-        {
-            //Store temp vars
-            var oldForeColor = Console.ForegroundColor;
-            var oldBackColor = Console.BackgroundColor;
-            var oldCursorLeft = Console.CursorLeft;
-            var oldCursorTop = Console.CursorTop;
-            //Do the temp action
-            tempAction(this);
-            //Reset temp vars
-            Console.ForegroundColor = oldForeColor;
-            Console.BackgroundColor = oldBackColor;
-            Console.CursorLeft = oldCursorLeft;
-            Console.CursorTop = oldCursorTop;
-        }
-        //Fin
-        return this;
-    }
-
-    /// <summary>
-    /// Stores the current <see cref="Terminal"/> <see cref="Color"/>s, performs an <see cref="Action"/> on this <see cref="Terminal"/>, then restores the <see cref="Color"/>s.
-    /// </summary>
-    /// <param name="tempAction"></param>
-    /// <returns></returns>
-    public TerminalInstance TempColor(Action<TerminalInstance> tempAction)
-    {
-        if (tempAction is null)
-            return this;
-        lock (_lock)
-        {
-            //Store temp vars
-            var oldForeColor = Console.ForegroundColor;
-            var oldBackColor = Console.BackgroundColor;
-            //Do the temp action
-            tempAction(this);
-            //Reset temp vars
-            Console.ForegroundColor = oldForeColor;
-            Console.BackgroundColor = oldBackColor;
-        }
-        //Fin
-        return this;
-    }
-
-    /// <summary>
-    /// Stores the current <see cref="Terminal"/> <see cref="Cursor"/> position, performs an <see cref="Action"/> on this <see cref="Terminal"/>, then restores the <see cref="Cursor"/> position.
-    /// </summary>
-    /// <param name="tempAction"></param>
-    /// <returns></returns>
-    public TerminalInstance TempPosition(Action<TerminalInstance> tempAction)
-    {
-        if (tempAction is null)
-            return this;
-        lock (_lock)
-        {
-            //Store temp vars
-            var oldCursorLeft = Console.CursorLeft;
-            var oldCursorTop = Console.CursorTop;
-            //Do the temp action
-            tempAction(this);
-            //Reset temp vars
-            Console.CursorLeft = oldCursorLeft;
-            Console.CursorTop = oldCursorTop;
-        }
-        //Fin
-        return this;
-    }
-
-    /// <summary>
-    /// Gets an <see cref="IDisposable"/> that, when disposed, resets the <see cref="Terminal"/>'s colors back to what they were when the <see cref="ColorLock"/> was taken.
-    /// </summary>
-    public IDisposable ColorLock
+    Rectangle ITerminalWindow.Bounds
     {
         get
         {
-            //Store temp vars
-            lock (_lock)
+            return GetValue(() =>
             {
-                var oldForeColor = Console.ForegroundColor;
-                var oldBackColor = Console.BackgroundColor;
-                return new Disposer(() =>
-                {
-                    //Reset temp vars
-                    lock (_lock)
-                    {
-                        Console.ForegroundColor = oldForeColor;
-                        Console.BackgroundColor = oldBackColor;
-                    }
-                });
-            }
+                if (NativeMethods.GetWindowRect(_consoleWindowHandle, out var bounds))
+                    return bounds;
+                return Rectangle.Empty;
+            });
         }
+        set
+        {
+            Interact(() =>
+            {
+                NativeMethods.MoveAndResizeWindow(_consoleWindowHandle, value, true);
+            });
+        }
+    }
+    #endregion
+
+    void ITerminalInstance.Temp(Action<ITerminalInstance> terminalAction)
+    {
+        // TODO: Better watch syntax?
+        throw new NotImplementedException();
     }
 
-    /// <summary>
-    /// Gets an <see cref="IDisposable"/> that, when disposed, resets the <see cref="Terminal"/>'s cursor back to where it was when the <see cref="ColorLock"/> was taken.
-    /// </summary>
-    public IDisposable CursorLock
+    void IDisposable.Dispose()
     {
-        get
+        using (_slimLock.GetWriteLock())
         {
-            lock (_lock)
-            {
-                //Store temp vars
-                var oldCursorLeft = Console.CursorLeft;
-                var oldCursorTop = Console.CursorTop;
-                return new Disposer(() =>
-                {
-                    //Reset temp vars
-                    lock (_lock)
-                    {
-                        Console.CursorLeft = oldCursorLeft;
-                        Console.CursorTop = oldCursorTop;
-                    }
-                });
-            }
+            SysCons.CancelKeyPress -= ConsoleCancelKeyPress;
+            _cancelEventHandler = null;
         }
+        _slimLock.Dispose();
     }
-    #endregion
-    #endregion
-}*/
+}

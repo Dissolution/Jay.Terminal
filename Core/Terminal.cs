@@ -1,19 +1,4 @@
-﻿/*using System.Drawing;
-using System.Runtime.CompilerServices;
-using System.Security;
-using System.Text;
-
-// ReSharper disable MethodOverloadWithOptionalParameter
-
-namespace Jay.Terminalis;
-
-/// <summary>
-/// A replacement for <see cref="System.Console"/> with advanced options.
-/// </summary>
-public static class Terminal
-{
-    private static readonly TerminalInstance _instance;
-
+﻿/*
     #region Properties
     /// <summary>
     /// Gets or sets the foreground <see cref="System.Drawing.Color"/> of the <see cref="Terminal"/>.

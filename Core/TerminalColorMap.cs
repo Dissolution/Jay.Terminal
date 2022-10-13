@@ -36,7 +36,7 @@ public static class TerminalColorMap
     /// <summary>
     /// Gets the closest <see cref="TerminalColor"/> match for the given <paramref name="color"/>
     /// </summary>
-    public static TerminalColor GetClosestTerminalColor(Color color)
+    public static TerminalColor ToTerminalColor(this Color color)
     {
         // Simple dist check
         TerminalColor closestColor = default;
@@ -63,5 +63,20 @@ public static class TerminalColorMap
     public static Color ToColor(this TerminalColor terminalColor)
     {
         return _terminalColorToColorMap[(int)terminalColor];
+    }
+
+    public static Color ToColor(this ConsoleColor color)
+    {
+        return _terminalColorToColorMap[(int)color];
+    }
+
+    public static TerminalColor ToTerminalColor(this ConsoleColor consoleColor)
+    {
+        return (TerminalColor)consoleColor;
+    }
+    
+    public static ConsoleColor ToConsoleColor(this TerminalColor terminalColor)
+    {
+        return (ConsoleColor)terminalColor;
     }
 }
