@@ -1,4 +1,6 @@
-﻿namespace Jay.Terminalis;
+﻿/*using System.Drawing;
+
+namespace Jay.Terminalis;
 
 /// <summary>
 /// Options related to a <see cref="Terminal"/>'s display (not actual) window.
@@ -121,4 +123,4 @@ public sealed class TerminalDisplayWindow
         Console.SetWindowSize(width, height);
         return _terminal;
     }
-}
+}*/

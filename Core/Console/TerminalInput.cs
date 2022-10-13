@@ -1,4 +1,4 @@
-﻿using System.Text;
+﻿/*using System.Text;
 
 namespace Jay.Terminalis;
 
@@ -80,4 +80,4 @@ public sealed class TerminalInput
         Console.InputEncoding = encoding;
         return _terminal;
     }
-}
+}*/

@@ -1,4 +1,6 @@
-﻿namespace Jay.Terminalis;
+﻿/*using System.Drawing;
+
+namespace Jay.Terminalis;
 
 /// <summary>
 /// Options related to a <see cref="Terminal"/>'s cursor.
@@ -101,4 +103,4 @@ public sealed class TerminalCursor
         Console.CursorVisible = visible;
         return _terminal;
     }
-}
+}*/

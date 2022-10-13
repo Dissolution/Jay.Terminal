@@ -2,25 +2,27 @@
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Jay.Terminalis.Buff.Native;
+using Jay.Terminalis.Native;
 using Microsoft.Toolkit.HighPerformance;
+
 // ReSharper disable RedundantAssignment
 
-namespace Jay.Terminalis.Buff;
+namespace Jay.Terminalis;
 
 /// <summary>
 /// Modifies a <c>ref</c> <see cref="TerminalCell"/> argument
 /// </summary>
 public delegate void ModifyCell(ref TerminalCell cell);
     
-public sealed class TerminalBuffer
+public sealed class TerminalCells
 {
-    public static TerminalBuffer Instance { get; } = new TerminalBuffer();
+    public static TerminalCells Instance { get; } = new TerminalCells();
         
     private readonly IntPtr _consoleHandle;
     private readonly TerminalCell[] _cells;
 
-    public Size Size { get; }
+    public int Width { get; }
+    public int Height { get; }
 
     public ref TerminalCell this[int index]
     {
@@ -31,7 +33,7 @@ public sealed class TerminalBuffer
     public ref TerminalCell this[int x, int y]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => ref Cells2D[x, y];
+        get => ref Cells2D[row: y, column: x];
     }
 
     public Span<TerminalCell> Cells
@@ -43,7 +45,7 @@ public sealed class TerminalBuffer
     public Span2D<TerminalCell> Cells2D
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => new Span2D<TerminalCell>(_cells, Size.Height, Size.Width);
+        get => new Span2D<TerminalCell>(_cells, Height, Width);
     }
 
     internal IntPtr ConsoleHandle
@@ -58,27 +60,27 @@ public sealed class TerminalBuffer
         get => _cells.Length;
     }
 
-    public TerminalBuffer()
+    public TerminalCells()
     {
         _consoleHandle = NativeMethods.GetConsoleHandle();
         var info = new NativeMethods.ConsoleScreenBufferInfo();
         NativeMethods.GetConsoleScreenBufferInfo(_consoleHandle, ref info);
-        int width = info.Size.Width;
-        int height = info.Size.Height;
-        
-        this.Size = new Size(width, height);
-        _cells = new TerminalCell[width * height];
+        if (!info.Size.IsValid)
+            throw new InvalidOperationException();
+        this.Width = info.Size.Width;
+        this.Height = info.Size.Height;
+        _cells = new TerminalCell[Width * Height];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ShortRect GetDefaultBufferRect() => new ShortRect(0, 0, Size.Width, Size.Height);
+    private Rect16 AllCellsRect() => Rect16.FromLTWH32(0, 0, Width, Height);
 
     /// <summary>
     /// Refreshes the <see cref="Cells"/> to be consistent with what is currently on the Terminal's screen
     /// </summary>
     public void Refresh()
     {
-        var rect = GetDefaultBufferRect();
+        var rect = AllCellsRect();
         bool read = NativeMethods.ReadConsoleOutput(_consoleHandle,
             _cells,
             rect.Size,
@@ -118,7 +120,7 @@ public sealed class TerminalBuffer
     /// </summary>
     public void Flush()
     {
-        var rect = GetDefaultBufferRect();
+        var rect = AllCellsRect();
         bool wrote = NativeMethods.WriteConsoleOutput(_consoleHandle,
             _cells,
             rect.Size,

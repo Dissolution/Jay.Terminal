@@ -5,12 +5,12 @@ namespace Jay.Terminalis;
 /// <summary>
 /// Manages <see cref="TerminalColor"/> to <see cref="Color"/> conversion
 /// </summary>
-public static class TerminalColors
+public static class TerminalColorMap
 {
     private static readonly Color[] _terminalColorToColorMap;
     private const double _matchEpsilon = 0.001d;
 
-    static TerminalColors()
+    static TerminalColorMap()
     {
         _terminalColorToColorMap = new Color[16]
         {

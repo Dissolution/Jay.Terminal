@@ -1,4 +1,7 @@
-﻿namespace Jay.Terminalis;
+﻿/*using System.Drawing;
+using Jay.Terminalis.Buff.Native;
+
+namespace Jay.Terminalis;
 
 /// <summary>
 /// Options related to a <see cref="Terminal"/>'s actual window.
@@ -24,18 +27,23 @@ public sealed class TerminalWindow
     {
         get
         {
-            RECT rect = default;
-            if (NativeMethods.GetWindowRect(_handle, ref rect))
-                return Rectangle.FromLTRB(rect.left, rect.top, rect.right, rect.bottom);
-            return Rectangle.Empty;
+            // RECT rect = default;
+            // if (NativeMethods.GetWindowRect(_handle, ref rect))
+            //     return Rectangle.FromLTRB(rect.left, rect.top, rect.right, rect.bottom);
+            // return Rectangle.Empty;
+            throw new NotImplementedException();
         }
-        set => NativeMethods.MoveWindow(_handle, value.X, value.Y, value.Width, value.Height, true);
+        set
+        {
+            //NativeMethods.MoveWindow(_handle, value.X, value.Y, value.Width, value.Height, true);
+            throw new NotImplementedException();
+        }
     }
 
     internal TerminalWindow(TerminalInstance terminal)
     {
         _terminal = terminal;
-        _handle = NativeMethods.GetConsoleWindow();
+        _handle = NativeMethods.GetConsoleHandle();
     }
 
     /// <summary>
@@ -54,11 +62,11 @@ public sealed class TerminalWindow
     /// </summary>
     /// <param name="show"></param>
     /// <returns></returns>
-    public TerminalInstance Show(Show show)
-    {
-        NativeMethods.ShowWindow(_handle, (int)show);
-        return _terminal;
-    }
+    // public TerminalInstance Show(Show show)
+    // {
+    //     NativeMethods.ShowWindow(_handle, (int)show);
+    //     return _terminal;
+    // }
 
     /// <summary>
     /// Moves the <see cref="Terminal"/> window to the specified <see cref="Point"/>.
@@ -75,9 +83,10 @@ public sealed class TerminalWindow
     /// <returns></returns>
     public TerminalInstance Move(int x, int y)
     {
-        var bounds = this.Bounds;
-        NativeMethods.MoveWindow(_handle, x, y, bounds.Width, bounds.Height, true);
-        return _terminal;
+        // var bounds = this.Bounds;
+        // NativeMethods.MoveWindow(_handle, x, y, bounds.Width, bounds.Height, true);
+        // return _terminal;
+        throw new NotImplementedException();
     }
 
     /// <summary>
@@ -100,7 +109,8 @@ public sealed class TerminalWindow
         if (height <= 0)
             throw new ArgumentOutOfRangeException(nameof(height), "Height must be greater than zero.");
         var bounds = this.Bounds;
-        NativeMethods.MoveWindow(_handle, bounds.X, bounds.Y, width, height, true);
+        //NativeMethods.MoveWindow(_handle, bounds.X, bounds.Y, width, height, true);
+        throw new NotImplementedException();
         return _terminal;
     }
 
@@ -111,7 +121,8 @@ public sealed class TerminalWindow
     /// <returns></returns>
     public TerminalInstance SetBounds(Rectangle bounds)
     {
-        NativeMethods.MoveWindow(_handle, bounds.X, bounds.Y, bounds.Width, bounds.Height, true);
+        //NativeMethods.MoveWindow(_handle, bounds.X, bounds.Y, bounds.Width, bounds.Height, true);
+        throw new NotImplementedException();
         return _terminal;
     }
-}
+}*/

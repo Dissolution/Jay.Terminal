@@ -1,7 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Jay.Terminalis.Buff.Native;
+namespace Jay.Terminalis.Native;
 
 [StructLayout(LayoutKind.Explicit, Size = 4, CharSet = CharSet.Unicode)]
 public struct TerminalCell : IEquatable<TerminalCell>
@@ -21,7 +21,7 @@ public struct TerminalCell : IEquatable<TerminalCell>
     public TerminalColors Colors;
 
     [FieldOffset(3)] 
-    public CommonLvb CommonLvb;
+    public CommonLVB CommonLvb;
 
     [SkipLocalsInit]
     public TerminalCell(char unicodeChar, TerminalColor foreColor, TerminalColor backColor)

@@ -1,24 +1,30 @@
-﻿using System.Drawing;
+﻿using Jay.Terminalis.Native;
 
 namespace Jay.Terminalis;
 
+/// <summary>
+/// Represents a <see cref="TerminalCell"/>'s Foreground or Background Color
+/// </summary>
+/// <remarks>
+/// See <see cref="ConsoleColor"/> for inspiration / reference
+/// </remarks>
 [Flags]
 public enum TerminalColor : byte
 {
-    Black = 0b00000000, //  0  Black
-    DarkBlue = 0b00000001, //  1  Blue
-    DarkGreen = 0b00000010, //  2  Green
-    DarkCyan = 0b00000011, //  3  Cyan = Green | Blue
-    DarkRed = 0b00000100, //  4  Red
-    DarkMagenta = 0b00000101, //  5  Magenta = Red | Blue
-    DarkYellow = 0b00000110, //  6  Yellow = Red | Green
-    Gray = 0b00000111, //  7  Gray = Red | Green | Blue
-    DarkGray = 0b00001000, //  8  Intense Black
-    Blue = 0b00001001, //  9  Intense Blue
-    Green = 0b00001010, // 10  Intense Green
-    Cyan = 0b00001011, // 11  Intense Cyan = Intense | Green | Blue
-    Red = 0b00001100, // 12  Intense Red
-    Magenta = 0b00001101, // 13  Intense Magenta = Intense | Red | Blue
-    Yellow = 0b00001110, // 14  Intense Yellow = Intense | Red | Green
-    White = 0b00001111, // 15  Intense Gray = Intense | Red | Green | Blue
+    Black =         0b_0000_0000,
+    DarkBlue =      0b_0000_0001,
+    DarkGreen =     0b_0000_0010,
+    DarkCyan =      0b_0000_0011,   // = DarkGreen | DarkBlue
+    DarkRed =       0b_0000_0100,
+    DarkMagenta =   0b_0000_0101,   // = DarkRed | DarkBlue
+    DarkYellow =    0b_0000_0110,   // = DarkRed | DarkGreen
+    Gray =          0b_0000_0111,   // = DarkRed | DarkGreen | DarkBlue
+    DarkGray =      0b_0000_1000,   // = Intense | Black
+    Blue =          0b_0000_1001,   // = Intense | DarkBlue
+    Green =         0b_0000_1010,   // = Intense | DarkGreen
+    Cyan =          0b_0000_1011,   // = Intense | DarkGreen | DarkBlue
+    Red =           0b_0000_1100,   // = Intense | DarkRed
+    Magenta =       0b_0000_1101,   // = Intense | DarkRed | DarkBlue
+    Yellow =        0b_0000_1110,   // = Intense | DarkRed | DarkGreen
+    White =         0b_0000_1111,   // = Intense | DarkRed | DarkGreen | DarkBlue
 }

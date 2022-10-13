@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+﻿/*using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Security;
 using System.Text;
@@ -16,8 +16,8 @@ public sealed class TerminalInstance
     /// </summary>
     internal readonly object _lock = new object();
 
-    private IPalette _palette;
-    private readonly ColorMapper _colorMapper = new ColorMapper();
+    //private IPalette _palette;
+    //private readonly ColorMapper _colorMapper = new ColorMapper();
     #endregion
 
     #region Properties
@@ -1184,4 +1184,4 @@ public sealed class TerminalInstance
     }
     #endregion
     #endregion
-}
+}*/

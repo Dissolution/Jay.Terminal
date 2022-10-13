@@ -1,4 +1,4 @@
-﻿namespace Jay.Terminalis;
+﻿/*namespace Jay.Terminalis;
 
 /// <summary>
 /// Options related to a <see cref="Terminal"/>'s Error output.
@@ -49,4 +49,4 @@ public sealed class TerminalError
         Console.SetError(writer);
         return _terminal;
     }
-}
+}*/

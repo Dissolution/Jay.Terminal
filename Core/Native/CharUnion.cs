@@ -1,12 +1,12 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Jay.Terminalis.Buff.Native;
+namespace Jay.Terminalis.Native;
 
 [StructLayout(LayoutKind.Explicit, Size = 2, CharSet = CharSet.Unicode)]
 public struct CharUnion : IEquatable<CharUnion>, IEquatable<char>
 {
-    public static implicit operator CharUnion(char c) => new CharUnion(c);
+    public static implicit operator CharUnion(char ch) => new CharUnion(ch);
     public static implicit operator char(CharUnion charUnion) => charUnion.UnicodeChar;
         
     public static bool operator ==(CharUnion x, CharUnion y) => x.UnicodeChar == y.UnicodeChar;
@@ -32,9 +32,9 @@ public struct CharUnion : IEquatable<CharUnion>, IEquatable<char>
     }
 
     /// <inheritdoc />
-    public bool Equals(char c)
+    public bool Equals(char ch)
     {
-        return c == this.UnicodeChar;
+        return ch == this.UnicodeChar;
     }
 
     /// <inheritdoc />

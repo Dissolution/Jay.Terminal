@@ -1,4 +1,6 @@
-﻿namespace Jay.Terminalis;
+﻿/*using System.Drawing;
+
+namespace Jay.Terminalis;
 
 /// <summary>
 /// Options related to a <see cref="Terminal"/>'s buffer area.
@@ -89,4 +91,4 @@ public sealed class TerminalBuffer
         Console.MoveBufferArea(left, top, width, height, xPos, yPos);
         return _terminal;
     }
-}
+}*/

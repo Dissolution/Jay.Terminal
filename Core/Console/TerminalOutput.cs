@@ -1,4 +1,4 @@
-﻿using System.Text;
+﻿/*using System.Text;
 
 namespace Jay.Terminalis;
 
@@ -71,4 +71,4 @@ public sealed class TerminalOutput
         Console.OutputEncoding = encoding;
         return _terminal;
     }
-}
+}*/
