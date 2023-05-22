@@ -1,10 +1,11 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Jay.Terminalis.Native;
 
 [StructLayout(LayoutKind.Explicit, Size = 4, CharSet = CharSet.Unicode)]
-public struct TerminalCell : IEquatable<TerminalCell>
+public struct TerminalCell : IEquatable<TerminalCell>, IEqualityOperators<TerminalCell, TerminalCell, bool>
 {
     public static bool operator ==(TerminalCell a, TerminalCell b) => a.Value == b.Value;
     public static bool operator !=(TerminalCell a, TerminalCell b) => a.Value != b.Value;

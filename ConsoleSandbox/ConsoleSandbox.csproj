@@ -2,11 +2,12 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0-windows</TargetFramework>
+        <TargetFramework>net7.0-windows</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AssemblyName>Jay.Terminal.ConsoleSandbox</AssemblyName>
         <RootNamespace>Jay.Terminal.ConsoleSandbox</RootNamespace>
+        <LangVersion>latest</LangVersion>
     </PropertyGroup>
 
     <ItemGroup>

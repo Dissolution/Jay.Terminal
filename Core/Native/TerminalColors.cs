@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Jay.Terminalis.Native;
@@ -7,7 +8,7 @@ namespace Jay.Terminalis.Native;
 /// A union struct between a 4-bit Foreground <see cref="TerminalColor"/> and a 4-bit Background <see cref="TerminalColor"/>
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = sizeof(byte))]
-public struct TerminalColors : IEquatable<TerminalColors>
+public struct TerminalColors : IEquatable<TerminalColors>, IEqualityOperators<TerminalColors, TerminalColors, bool>
 {
     public static implicit operator TerminalColors(byte value) => new TerminalColors(value);
     public static implicit operator TerminalColors((TerminalColor ForeColor, TerminalColor BackColor) colors)

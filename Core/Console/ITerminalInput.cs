@@ -57,7 +57,6 @@ public interface ITerminalInput
     /// <returns></returns>
     Stream OpenStream(int bufferSize);
     
-     #region Read
 
     /// <summary>
     /// Reads the next <see cref="char"/>acter from the standard <see cref="Input"/> stream.
@@ -92,5 +91,4 @@ public interface ITerminalInput
     /// <param name="password"></param>
     /// <returns></returns>
     SecureString ReadPassword();
-    #endregion
 }

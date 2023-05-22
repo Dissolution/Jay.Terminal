@@ -1,6 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 
-namespace Jay.Terminalis.Native;
+namespace Jay.Terminalis;
 
 internal static class Validate
 {

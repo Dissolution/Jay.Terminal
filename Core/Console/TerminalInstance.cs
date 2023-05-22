@@ -6,13 +6,14 @@ using System.Security;
 using System.Text;
 using Jay.Terminalis.Colors;
 using Jay.Terminalis.Native;
+using Jay.Terminalis.Threading;
 
 namespace Jay.Terminalis.Console;
 
 internal class TerminalInstance : ITerminalInstance,
                                   ITerminalInput,
                                   ITerminalOutput,
-                                  ITerminalError,
+                                  ITerminalErrorOutput,
                                   ITerminalBuffer,
                                   ITerminalCursor,
                                   ITerminalDisplay,
@@ -26,7 +27,7 @@ internal class TerminalInstance : ITerminalInstance,
 
     public ITerminalOutput Output => this;
 
-    public ITerminalError Error  => this;
+    public ITerminalErrorOutput Error  => this;
 
     public ITerminalBuffer Buffer => this;
 
@@ -41,7 +42,7 @@ internal class TerminalInstance : ITerminalInstance,
         _consoleWindowHandle = NativeMethods.GetConsoleHandle();
         _slimLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         _cancelEventHandler = null;
-        SysCons.CancelKeyPress += ConsoleCancelKeyPress;
+        SystemConsole.CancelKeyPress += ConsoleCancelKeyPress;
     }
     private void ConsoleCancelKeyPress(object? sender, ConsoleCancelEventArgs args)
     {
@@ -95,8 +96,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     TextReader ITerminalInput.Reader
     {
-        get => GetValue(() => SysCons.In);
-        set => SetValue(SysCons.SetIn, value);
+        get => GetValue(() => SystemConsole.In);
+        set => SetValue(SystemConsole.SetIn, value);
     }
 
     /// <summary>
@@ -104,42 +105,42 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     Encoding ITerminalInput.Encoding
     {
-        get => GetValue(() => SysCons.InputEncoding);
-        set => SetValue(v => SysCons.InputEncoding = v, value);
+        get => GetValue(() => SystemConsole.InputEncoding);
+        set => SetValue(v => SystemConsole.InputEncoding = v, value);
     }
 
     /// <summary>
     /// Has the input stream been redirected from standard?
     /// </summary>
-    bool ITerminalInput.IsRedirected => GetValue(() => SysCons.IsInputRedirected);
+    bool ITerminalInput.IsRedirected => GetValue(() => SystemConsole.IsInputRedirected);
 
     /// <summary>
     /// Gets or sets whether Ctrl+C should be treated as input or as a break command.
     /// </summary>
     bool ITerminalInput.TreatCtrlCAsInput
     {
-        get => GetValue(() => SysCons.TreatControlCAsInput);
-        set => SetValue(v => SysCons.TreatControlCAsInput = v, value);
+        get => GetValue(() => SystemConsole.TreatControlCAsInput);
+        set => SetValue(v => SystemConsole.TreatControlCAsInput = v, value);
     }
     
     /// <summary>
     /// Acquires the standard input <see cref="Stream"/>.
     /// </summary>
     /// <returns></returns>
-    Stream ITerminalInput.OpenStream() => GetValue(() => SysCons.OpenStandardInput());
+    Stream ITerminalInput.OpenStream() => GetValue(() => SystemConsole.OpenStandardInput());
 
     /// <summary>
     /// Acquires the standard input <see cref="Stream"/>, which is set to a specified buffer size.
     /// </summary>
     /// <param name="bufferSize"></param>
     /// <returns></returns>
-    Stream ITerminalInput.OpenStream(int bufferSize) => GetValue(() => SysCons.OpenStandardInput(bufferSize));
+    Stream ITerminalInput.OpenStream(int bufferSize) => GetValue(() => SystemConsole.OpenStandardInput(bufferSize));
 
-    bool ITerminalInput.KeyAvailable => GetValue(() => SysCons.KeyAvailable);
+    bool ITerminalInput.KeyAvailable => GetValue(() => SystemConsole.KeyAvailable);
 
-    bool ITerminalInput.CapsLock => GetValue(() => SysCons.CapsLock);
+    bool ITerminalInput.CapsLock => GetValue(() => SystemConsole.CapsLock);
 
-    bool ITerminalInput.NumberLock => GetValue(() => SysCons.NumberLock);
+    bool ITerminalInput.NumberLock => GetValue(() => SystemConsole.NumberLock);
 
     event ConsoleCancelEventHandler? ITerminalInput.CancelKeyPress
     {
@@ -148,21 +149,21 @@ internal class TerminalInstance : ITerminalInstance,
     }
     char ITerminalInput.ReadChar()
     {
-        int unicodeChar = GetValue(SysCons.Read);
+        int unicodeChar = GetValue(SystemConsole.Read);
         return Convert.ToChar(unicodeChar);
     }
-    ConsoleKeyInfo ITerminalInput.ReadKey() => GetValue(SysCons.ReadKey);
-    ConsoleKeyInfo ITerminalInput.ReadKey(bool intercept) => GetValue(() => SysCons.ReadKey(intercept));
-    string? ITerminalInput.ReadLine() => GetValue(SysCons.ReadLine);
+    ConsoleKeyInfo ITerminalInput.ReadKey() => GetValue(SystemConsole.ReadKey);
+    ConsoleKeyInfo ITerminalInput.ReadKey(bool intercept) => GetValue(() => SystemConsole.ReadKey(intercept));
+    string? ITerminalInput.ReadLine() => GetValue(SystemConsole.ReadLine);
   
     SecureString ITerminalInput.ReadPassword()
     {
         return GetValue(() =>
         {
             var secureString = new SecureString();
-            while (SysCons.KeyAvailable)
+            while (SystemConsole.KeyAvailable)
             {
-                var key = SysCons.ReadKey();
+                var key = SystemConsole.ReadKey();
                 if (char.IsWhiteSpace(key.KeyChar)) break;
                 secureString.AppendChar(key.KeyChar);
             }
@@ -177,8 +178,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     TextWriter ITerminalOutput.Writer
     {
-        get => GetValue(() => SysCons.Out);
-        set => SetValue(SysCons.SetOut, value);
+        get => GetValue(() => SystemConsole.Out);
+        set => SetValue(SystemConsole.SetOut, value);
     }
 
     /// <summary>
@@ -186,27 +187,27 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     Encoding ITerminalOutput.Encoding
     {
-        get => GetValue(() => SysCons.OutputEncoding);
-        set => SetValue(v => SysCons.OutputEncoding = v, value);
+        get => GetValue(() => SystemConsole.OutputEncoding);
+        set => SetValue(v => SystemConsole.OutputEncoding = v, value);
     }
 
     /// <summary>
     /// Has the output stream been redirected from standard?
     /// </summary>
-    bool ITerminalOutput.IsRedirected => GetValue(() => SysCons.IsOutputRedirected);
+    bool ITerminalOutput.IsRedirected => GetValue(() => SystemConsole.IsOutputRedirected);
     
     /// <summary>
     /// Acquires the standard output <see cref="Stream"/>.
     /// </summary>
     /// <returns></returns>
-    Stream ITerminalOutput.OpenStream() => GetValue(SysCons.OpenStandardOutput);
+    Stream ITerminalOutput.OpenStream() => GetValue(SystemConsole.OpenStandardOutput);
 
     /// <summary>
     /// Acquires the standard output <see cref="Stream"/>, which is set to a specified buffer size.
     /// </summary>
     /// <param name="bufferSize"></param>
     /// <returns></returns>
-    Stream ITerminalOutput.OpenStream(int bufferSize) => GetValue(() => SysCons.OpenStandardOutput(bufferSize));
+    Stream ITerminalOutput.OpenStream(int bufferSize) => GetValue(() => SystemConsole.OpenStandardOutput(bufferSize));
 
     TerminalColor ITerminalOutput.DefaultForeColor => TerminalColors.Default.Foreground;
 
@@ -214,14 +215,14 @@ internal class TerminalInstance : ITerminalInstance,
 
     TerminalColor ITerminalOutput.ForegroundColor
     {
-        get => GetValue(() => (TerminalColor)SysCons.ForegroundColor);
-        set => SetValue(color => SysCons.ForegroundColor = (ConsoleColor)color, value);
+        get => GetValue(() => (TerminalColor)SystemConsole.ForegroundColor);
+        set => SetValue(color => SystemConsole.ForegroundColor = (ConsoleColor)color, value);
     }
 
     TerminalColor ITerminalOutput.BackgroundColor
     {
-        get => GetValue(() => (TerminalColor)SysCons.BackgroundColor);
-        set => SetValue(color => SysCons.BackgroundColor = (ConsoleColor)color, value);
+        get => GetValue(() => (TerminalColor)SystemConsole.BackgroundColor);
+        set => SetValue(color => SystemConsole.BackgroundColor = (ConsoleColor)color, value);
     }
 
     IPalette ITerminalOutput.Palette
@@ -234,9 +235,12 @@ internal class TerminalInstance : ITerminalInstance,
     {
         get
         {
-            return new TerminalReset(this)
-                .Watch(t => t.Output.ForegroundColor)
-                .Watch(t => t.Output.BackgroundColor);
+            var (fore, back) = (SystemConsole.ForegroundColor, SystemConsole.BackgroundColor);
+            return new ActionDisposable(() => Interact(() =>
+            {
+                SystemConsole.ForegroundColor = fore;
+                SystemConsole.BackgroundColor = back;
+            }));
         }
     }
 
@@ -277,20 +281,20 @@ internal class TerminalInstance : ITerminalInstance,
                 Span<char> buffer = stackalloc char[1024];
                 if (((ISpanFormattable)value).TryFormat(buffer, out int charsWritten, default, default))
                 {
-                    SysCons.Out.Write(buffer[..charsWritten]);
+                    SystemConsole.Out.Write(buffer[..charsWritten]);
                 }
                 else
                 {
-                    SysCons.Out.Write(((IFormattable)value).ToString(default, default));
+                    SystemConsole.Out.Write(((IFormattable)value).ToString(default, default));
                 }
             }
             else if (value is IFormattable)
             {
-                SysCons.Out.Write(((IFormattable)value).ToString(default, default));
+                SystemConsole.Out.Write(((IFormattable)value).ToString(default, default));
             }
             else
             {
-                SysCons.Out.Write(value?.ToString());
+                SystemConsole.Out.Write(value?.ToString());
             }
         }
     }
@@ -298,7 +302,7 @@ internal class TerminalInstance : ITerminalInstance,
     {
         using (_slimLock.GetWriteLock())
         {
-            SysCons.Out.Write(text);
+            SystemConsole.Out.Write(text);
         }
     }
     void ITerminalOutput.Write(ref DefaultInterpolatedStringHandler interpolatedText)
@@ -307,28 +311,28 @@ internal class TerminalInstance : ITerminalInstance,
         string text = interpolatedText.ToStringAndClear();
         using (_slimLock.GetWriteLock())
         {
-            SysCons.Out.Write(text);
+            SystemConsole.Out.Write(text);
         }
     }
     void ITerminalOutput.WriteLine()
     {
         using (_slimLock.GetWriteLock())
         {
-            SysCons.Out.WriteLine();
+            SystemConsole.Out.WriteLine();
         }
     }
     void ITerminalOutput.WriteLine<T>([AllowNull] T value)
     {
         using (_slimLock.GetWriteLock())
         {
-            SysCons.Out.WriteLine(value?.ToString());
+            SystemConsole.Out.WriteLine(value?.ToString());
         }
     }
     void ITerminalOutput.WriteLine(ReadOnlySpan<char> text)
     {
         using (_slimLock.GetWriteLock())
         {
-            SysCons.Out.WriteLine(text);
+            SystemConsole.Out.WriteLine(text);
         }
     }
     void ITerminalOutput.WriteLine(ref DefaultInterpolatedStringHandler interpolatedText)
@@ -336,7 +340,7 @@ internal class TerminalInstance : ITerminalInstance,
         // ToDo special someday!
         using (_slimLock.GetWriteLock())
         {
-            SysCons.Out.WriteLine(interpolatedText.ToStringAndClear());
+            SystemConsole.Out.WriteLine(interpolatedText.ToStringAndClear());
         }
     }
     #endregion
@@ -345,29 +349,29 @@ internal class TerminalInstance : ITerminalInstance,
     /// <summary>
     /// Gets or sets the <see cref="TextWriter"/> the Error outputs to.
     /// </summary>
-    TextWriter ITerminalError.Writer
+    TextWriter ITerminalErrorOutput.Writer
     {
-        get => GetValue(() => SysCons.Error);
-        set => SetValue(SysCons.SetError, value);
+        get => GetValue(() => SystemConsole.Error);
+        set => SetValue(SystemConsole.SetError, value);
     }
 
     /// <summary>
     /// Has the error stream been redirected from standard?
     /// </summary>
-    bool ITerminalError.IsRedirected => GetValue(() => SysCons.IsErrorRedirected);
+    bool ITerminalErrorOutput.IsRedirected => GetValue(() => SystemConsole.IsErrorRedirected);
 
     /// <summary>
     /// Acquires the standard error <see cref="Stream"/>.
     /// </summary>
     /// <returns></returns>
-    Stream ITerminalError.OpenStream() => GetValue(SysCons.OpenStandardError);
+    Stream ITerminalErrorOutput.OpenStream() => GetValue(SystemConsole.OpenStandardError);
 
     /// <summary>
     /// Acquires the standard error <see cref="Stream"/>, which is set to a specified buffer size.
     /// </summary>
     /// <param name="bufferSize"></param>
     /// <returns></returns>
-    Stream ITerminalError.OpenStream(int bufferSize) => GetValue(() => SysCons.OpenStandardError(bufferSize));
+    Stream ITerminalErrorOutput.OpenStream(int bufferSize) => GetValue(() => SystemConsole.OpenStandardError(bufferSize));
     #endregion
     
     #region Buffer
@@ -376,8 +380,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalBuffer.Width
     {
-        get => GetValue(() => SysCons.BufferWidth);
-        set => SetValue(v => SysCons.BufferWidth = v, value);
+        get => GetValue(() => SystemConsole.BufferWidth);
+        set => SetValue(v => SystemConsole.BufferWidth = v, value);
     }
 
     /// <summary>
@@ -385,8 +389,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalBuffer.Height
     {
-        get => GetValue(() => SysCons.BufferHeight);
-        set => SetValue(v => SysCons.BufferHeight = v, value);
+        get => GetValue(() => SystemConsole.BufferHeight);
+        set => SetValue(v => SystemConsole.BufferHeight = v, value);
     }
 
     /// <summary>
@@ -394,8 +398,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     Size ITerminalBuffer.Size
     {
-        get => GetValue(() => new Size(SysCons.BufferWidth, SysCons.BufferHeight));
-        set => SetValue(v => SysCons.SetBufferSize(v.Width, v.Height), value);
+        get => GetValue(() => new Size(SystemConsole.BufferWidth, SystemConsole.BufferHeight));
+        set => SetValue(v => SystemConsole.SetBufferSize(v.Width, v.Height), value);
     }
 
     /// <summary>
@@ -408,7 +412,7 @@ internal class TerminalInstance : ITerminalInstance,
     {
         Interact(() =>
         {
-            SysCons.MoveBufferArea(area.Left, area.Top, area.Width, area.Height, position.X, position.Y);
+            SystemConsole.MoveBufferArea(area.Left, area.Top, area.Width, area.Height, position.X, position.Y);
         });
     }
 
@@ -426,11 +430,11 @@ internal class TerminalInstance : ITerminalInstance,
     {
         Interact(() =>
         {
-            SysCons.MoveBufferArea(left, top, width, height, xPos, yPos);
+            SystemConsole.MoveBufferArea(left, top, width, height, xPos, yPos);
         });
     }
 
-    void ITerminalBuffer.Clear() => Interact(SysCons.Clear);
+    void ITerminalBuffer.Clear() => Interact(SystemConsole.Clear);
     #endregion
     
     #region Cursor
@@ -439,8 +443,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalCursor.Left
     {
-        get => GetValue(() => SysCons.CursorLeft);
-        set => SetValue(left => SysCons.CursorLeft = left, value);
+        get => GetValue(() => SystemConsole.CursorLeft);
+        set => SetValue(left => SystemConsole.CursorLeft = left, value);
     }
 
     /// <summary>
@@ -448,8 +452,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalCursor.Top
     {
-        get => GetValue(() => SysCons.CursorTop);
-        set => SetValue(top => SysCons.CursorTop = top, value);
+        get => GetValue(() => SystemConsole.CursorTop);
+        set => SetValue(top => SystemConsole.CursorTop = top, value);
     }
 
     /// <summary>
@@ -457,8 +461,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     Point ITerminalCursor.Position
     {
-        get => GetValue(() => new Point(SysCons.CursorLeft, SysCons.CursorTop));
-        set => SetValue(point => SysCons.SetCursorPosition(point.X, point.Y), value);
+        get => GetValue(() => new Point(SystemConsole.CursorLeft, SystemConsole.CursorTop));
+        set => SetValue(point => SystemConsole.SetCursorPosition(point.X, point.Y), value);
     }
 
     /// <summary>
@@ -466,8 +470,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalCursor.Height
     {
-        get => GetValue(() => SysCons.CursorSize);
-        set => SetValue(height => SysCons.CursorSize = height, value);
+        get => GetValue(() => SystemConsole.CursorSize);
+        set => SetValue(height => SystemConsole.CursorSize = height, value);
     }
 
     /// <summary>
@@ -475,14 +479,31 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     bool ITerminalCursor.Visible
     {
-        get => GetValue(() => SysCons.CursorVisible);
-        set => SetValue(visible => SysCons.CursorVisible = visible, value);
+        get => GetValue(() => SystemConsole.CursorVisible);
+        set => SetValue(visible => SystemConsole.CursorVisible = visible, value);
     }
 
-    public IDisposable CursorLock => new TerminalReset(this)
-        .Watch(t => t.Cursor.Left)
-        .Watch(t => t.Cursor.Top)
-        .Watch(t => t.Cursor.Visible);
+    public IDisposable CursorLock
+    {
+        get
+        {
+            var (left, top, visible) = (SystemConsole.CursorLeft, SystemConsole.CursorTop, SystemConsole.CursorVisible);
+            return new ActionDisposable(() =>
+            {
+                _slimLock.TryEnterWriteLock(-1);
+                try
+                {
+                    SystemConsole.CursorLeft = left;
+                    SystemConsole.CursorTop = top;
+                    SystemConsole.CursorVisible = visible;
+                }
+                finally
+                {
+                    _slimLock.ExitWriteLock();
+                }
+            });
+        }
+    }
 
     public void TempPosition(Action<ITerminalInstance> tempAction)
     {
@@ -498,8 +519,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalDisplay.Left
     {
-        get => GetValue(() => SysCons.WindowLeft);
-        set => SetValue(left => SysCons.WindowLeft = left, value);
+        get => GetValue(() => SystemConsole.WindowLeft);
+        set => SetValue(left => SystemConsole.WindowLeft = left, value);
     }
 
     /// <summary>
@@ -507,8 +528,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalDisplay.Top
     {
-        get => GetValue(() => SysCons.WindowTop);
-        set => SetValue(top => SysCons.WindowTop = top, value);
+        get => GetValue(() => SystemConsole.WindowTop);
+        set => SetValue(top => SystemConsole.WindowTop = top, value);
     }
 
     /// <summary>
@@ -516,8 +537,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     Point ITerminalDisplay.Position
     {
-        get => GetValue(() => new Point(SysCons.WindowLeft, SysCons.WindowTop));
-        set => SetValue(point => SysCons.SetWindowPosition(point.X, point.Y), value);
+        get => GetValue(() => new Point(SystemConsole.WindowLeft, SystemConsole.WindowTop));
+        set => SetValue(point => SystemConsole.SetWindowPosition(point.X, point.Y), value);
     }
 
     /// <summary>
@@ -525,8 +546,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalDisplay.Width
     {
-        get => GetValue(() => SysCons.WindowWidth);
-        set => SetValue(width => SysCons.WindowWidth = width, value);
+        get => GetValue(() => SystemConsole.WindowWidth);
+        set => SetValue(width => SystemConsole.WindowWidth = width, value);
     }
 
     /// <summary>
@@ -534,8 +555,8 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     int ITerminalDisplay.Height
     {
-        get => GetValue(() => SysCons.WindowHeight);
-        set => SetValue(height => SysCons.WindowHeight = height, value);
+        get => GetValue(() => SystemConsole.WindowHeight);
+        set => SetValue(height => SystemConsole.WindowHeight = height, value);
     }
 
     /// <summary>
@@ -543,21 +564,21 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     Size ITerminalDisplay.Size
     {
-        get => GetValue(() => new Size(SysCons.WindowWidth, SysCons.WindowHeight));
-        set => SetValue(size => SysCons.SetWindowSize(size.Width, size.Height), value);
+        get => GetValue(() => new Size(SystemConsole.WindowWidth, SystemConsole.WindowHeight));
+        set => SetValue(size => SystemConsole.SetWindowSize(size.Width, size.Height), value);
     }
 
     /// <summary>
     /// Gets the largest possible number of <see cref="Terminal"/> display window rows, based on the current font, screen resolution, and window size.
     /// </summary>
-    int ITerminalDisplay.LargestHeight => GetValue(() => SysCons.LargestWindowHeight);
+    int ITerminalDisplay.LargestHeight => GetValue(() => SystemConsole.LargestWindowHeight);
 
     /// <summary>
     /// Gets the largest possible number of <see cref="Terminal"/> display window columns, based on the current font, screen resolution, and window size.
     /// </summary>
-    int ITerminalDisplay.LargestWidth => GetValue(() => SysCons.LargestWindowWidth);
+    int ITerminalDisplay.LargestWidth => GetValue(() => SystemConsole.LargestWindowWidth);
 
-    void ITerminalDisplay.Clear() => Interact(SysCons.Clear);
+    void ITerminalDisplay.Clear() => Interact(SystemConsole.Clear);
 #endregion
     
     #region Window
@@ -566,18 +587,18 @@ internal class TerminalInstance : ITerminalInstance,
     /// </summary>
     string ITerminalWindow.Title
     {
-        get => GetValue(() => SysCons.Title);
-        set => SetValue(title => SysCons.Title = title, value);
+        get => GetValue(() => SystemConsole.Title);
+        set => SetValue(title => SystemConsole.Title = title, value);
     }
 
     Point ITerminalWindow.Location
     {
-        get => GetValue(() => new Point(SysCons.WindowLeft, SysCons.WindowTop));
+        get => GetValue(() => new Point(SystemConsole.WindowLeft, SystemConsole.WindowTop));
         set
         {
             SetValue(location =>
             {
-                var newBounds = new Rectangle(location.X, location.Y, SysCons.WindowWidth, SysCons.WindowHeight);
+                var newBounds = new Rectangle(location.X, location.Y, SystemConsole.WindowWidth, SystemConsole.WindowHeight);
                 NativeMethods.MoveAndResizeWindow(_consoleWindowHandle, newBounds);
             }, value);
         }
@@ -585,12 +606,12 @@ internal class TerminalInstance : ITerminalInstance,
 
     Size ITerminalWindow.Size
     {
-        get => GetValue(() => new Size(SysCons.WindowWidth, SysCons.WindowHeight));
+        get => GetValue(() => new Size(SystemConsole.WindowWidth, SystemConsole.WindowHeight));
         set
         {
             SetValue(size =>
             {
-                var newBounds = new Rectangle(SysCons.WindowLeft, SysCons.WindowTop, size.Width, size.Height);
+                var newBounds = new Rectangle(SystemConsole.WindowLeft, SystemConsole.WindowTop, size.Width, size.Height);
                 NativeMethods.MoveAndResizeWindow(_consoleWindowHandle, newBounds);
             }, value);
         }
@@ -630,7 +651,7 @@ internal class TerminalInstance : ITerminalInstance,
     {
         using (_slimLock.GetWriteLock())
         {
-            SysCons.CancelKeyPress -= ConsoleCancelKeyPress;
+            SystemConsole.CancelKeyPress -= ConsoleCancelKeyPress;
             _cancelEventHandler = null;
         }
         _slimLock.Dispose();

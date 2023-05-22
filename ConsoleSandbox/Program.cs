@@ -26,6 +26,8 @@ while (!Console.KeyAvailable)
     //     ref TerminalCell cell = ref cells[x, y];
     //     cell.Char = chars[random.Next(chars.Length)];
     //     // hack
+     
+     
     //     cell.Colors = (TerminalColors)(byte)random.Next(byte.MaxValue + 1);
     // }
     for (var c = 0; c < cells.Length; c++)

@@ -1,6 +1,6 @@
 ﻿namespace Jay.Terminalis.Console;
 
-public interface ITerminalError
+public interface ITerminalErrorOutput
 {
     TextWriter Writer { get; set; }
     bool IsRedirected { get; }

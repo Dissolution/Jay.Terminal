@@ -1,4 +1,4 @@
-﻿namespace Jay.Terminalis.Console;
+﻿namespace Jay.Terminalis.Threading;
 
 public static class ReaderWriterLockSlimExtensions
 {
@@ -26,49 +26,55 @@ public static class ReaderWriterLockSlimExtensions
 
     public static IDisposable GetReadLock(this ReaderWriterLockSlim slimLock)
     {
-        return new ReadWriteLock(slimLock, true, false);
-    }
-    public static IDisposable GetWriteLock(this ReaderWriterLockSlim slimLock)
-    {
-        return new ReadWriteLock(slimLock, false, true);
+        return ReadLock.Acquire(slimLock);
     }
 
-    private sealed class ReadWriteLock : IDisposable
+    private sealed class ReadLock : IDisposable
     {
+        public static ReadLock Acquire(ReaderWriterLockSlim slimLock)
+        {
+            while (!slimLock.TryEnterReadLock(1))
+                Thread.SpinWait(1);
+            return new ReadLock(slimLock);
+        }
+        
         private readonly ReaderWriterLockSlim _slimLock;
 
-        public bool HasReadLock { get; private set; } = false;
-
-        public bool HasWriteLock { get; private set; } = false;
-        
-        public ReadWriteLock(ReaderWriterLockSlim slimLock, bool read, bool write)
+        private ReadLock(ReaderWriterLockSlim slimLock)
         {
-            if (read == write) throw new ArgumentException();
             _slimLock = slimLock;
-            if (read)
-            {
-                while (!slimLock.TryEnterReadLock(1))
-                    Thread.SpinWait(1);
-                HasReadLock = true;
-            }
-            else if (write)
-            {
-                while (!slimLock.TryEnterWriteLock(1))
-                    Thread.SpinWait(1);
-                HasWriteLock = true;
-            }
         }
 
         public void Dispose()
         {
-            if (HasReadLock)
-            {
-                _slimLock.ExitReadLock();
-            }
-            else if (HasWriteLock)
-            {
-                _slimLock.ExitWriteLock();
-            }
+            _slimLock.ExitReadLock();
+        }
+    }
+    
+    public static IDisposable GetWriteLock(this ReaderWriterLockSlim slimLock)
+    {
+        return WriteLock.Acquire(slimLock);
+    }
+
+    private sealed class WriteLock : IDisposable
+    {
+        public static WriteLock Acquire(ReaderWriterLockSlim slimLock)
+        {
+            while (!slimLock.TryEnterWriteLock(1))
+                Thread.SpinWait(1);
+            return new WriteLock(slimLock);
+        }
+        
+        private readonly ReaderWriterLockSlim _slimLock;
+
+        private WriteLock(ReaderWriterLockSlim slimLock)
+        {
+            _slimLock = slimLock;
+        }
+
+        public void Dispose()
+        {
+            _slimLock.ExitWriteLock();
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿global using SysCons = System.Console;
+﻿global using SystemConsole = System.Console;
 
 
 namespace Jay.Terminalis.Console;
@@ -7,7 +7,7 @@ public interface ITerminalInstance : IDisposable
 {
     ITerminalInput Input { get; }
     ITerminalOutput Output { get; }
-    ITerminalError Error { get; }
+    ITerminalErrorOutput Error { get; }
     
     ITerminalBuffer Buffer { get; }
     ITerminalCursor Cursor { get; }
